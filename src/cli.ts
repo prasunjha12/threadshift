@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep, join } from "node:path";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { ThreadShiftError } from "./core/errors.js";
 import { assertDefaultOutputContained, assertSafePackageOutput, writeBundle } from "./core/files.js";
@@ -320,6 +320,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+const entryPath = process.argv[1] ? await realpath(resolve(process.argv[1])).catch(() => undefined) : undefined;
+if (entryPath && entryPath === await realpath(fileURLToPath(import.meta.url))) {
   process.exitCode = await main();
 }
