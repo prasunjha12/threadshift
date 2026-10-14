@@ -1,0 +1,12 @@
+node_modules/
+dist/
+work/
+.worktrees/
+*.threadshift.json
+coverage/
+.env*
+!.env.example
+*.tgz
+*.log
+outputs/
+.threadshift/

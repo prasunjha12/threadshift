@@ -1,0 +1,24 @@
+{
+  "objective": "Continue the parser update while preserving its public API.",
+  "currentState": "The fixture tests pass locally; cross-platform checks have not run.",
+  "completed": [
+    "Added a regression test for quoted Unicode paths."
+  ],
+  "decisions": [
+    "Keep the existing parser API unchanged."
+  ],
+  "remaining": [
+    "Run the full suite on Windows, macOS, and Linux."
+  ],
+  "blockers": [],
+  "nextActions": [
+    "Finish the OpenCode delivery adapter."
+  ],
+  "importantFiles": [
+    "src/parser.ts",
+    "test/parser.test.ts"
+  ],
+  "verificationState": [
+    "User-supplied note: fixture tests pass locally; platform matrix pending."
+  ]
+}

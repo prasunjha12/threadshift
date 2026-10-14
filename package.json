@@ -1,0 +1,49 @@
+{
+  "name": "threadshift",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Portable handoffs between AI coding agents",
+  "type": "module",
+  "engines": {
+    "node": ">=24.12.0 <25"
+  },
+  "bin": {
+    "threadshift": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "docs/usage.md",
+    "docs/privacy.md",
+    "docs/compatibility.md",
+    "docs/validation.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:runtime": "node --test test/runtime.test.mjs",
+    "test:core": "node --test test/bundle.test.mjs",
+    "test:codex": "node --test test/codex.test.mjs",
+    "test:workspace": "node --test test/workspace.test.mjs",
+    "test:context": "node --test test/context.test.mjs",
+    "test:cli": "node --test test/cli.test.mjs",
+    "test:acceptance": "node --test test/acceptance.test.mjs",
+    "test:package": "node --test test/package.test.mjs",
+    "test:privacy": "node --test test/privacy.test.mjs",
+    "test": "npm run build && npm run test:runtime && npm run test:core && npm run test:codex && npm run test:workspace && npm run test:context && npm run test:cli && npm run test:acceptance && npm run test:privacy"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/prasunjha12/threadshift.git"
+  },
+  "bugs": {
+    "url": "https://github.com/prasunjha12/threadshift/issues"
+  },
+  "homepage": "https://github.com/prasunjha12/threadshift#readme"
+}
