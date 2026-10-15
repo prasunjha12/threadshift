@@ -1,0 +1,94 @@
+{
+  "info": {
+    "id": "ses_000000000000ThreadShiftSrc",
+    "projectID": "global",
+    "cost": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+        "read": 0,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1000,
+      "updated": 1792053617357,
+      "idle": 3000
+    },
+    "title": "Synthetic reverse contract",
+    "location": {
+      "directory": "C:/project"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_000000000001ThreadShiftUsr",
+      "time": {
+        "created": 1000
+      },
+      "text": "Objective: preserve a synthetic handover.",
+      "type": "user"
+    },
+    {
+      "id": "msg_000000000002ThreadShiftAst",
+      "time": {
+        "created": 2000,
+        "streamed": 2900,
+        "completed": 3000
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "fixture",
+        "providerID": "synthetic"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "SYNTHETIC_REASONING_EXCLUDED"
+        },
+        {
+          "type": "tool",
+          "id": "call_synthetic_test",
+          "name": "shell",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "npm test"
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "1 test failed: empty input"
+              }
+            ],
+            "metadata": {
+              "exit": 1
+            }
+          },
+          "time": {
+            "created": 2100,
+            "ran": 2200,
+            "completed": 2500
+          }
+        },
+        {
+          "type": "text",
+          "text": "Decision: preserve the interface. Remaining: add an empty-input regression."
+        }
+      ],
+      "finish": "stop"
+    },
+    {
+      "id": "msg_000000000003ThreadShiftEnd",
+      "time": {
+        "created": 3000
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

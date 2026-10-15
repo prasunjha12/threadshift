@@ -1,5 +1,19 @@
 # Harness compatibility: first-slice probes
 
+## Reverse-flow contract investigation, 2026-10-15
+
+Pinned OpenCode 2.0.22 exposes `session export`, `session import`, `api`, and `serve --stdio --hostname 127.0.0.1 --port 0`. Its native export uses `{ info, messages }` with flat `user`, `assistant`, `idle`, shell, compaction and control messages. Assistant content contains text/reasoning/tool objects; text content has no native part ID, so structural content indexes must be distinguished from native identities.
+
+The matching official `@opencode/schema`, `@opencode/client` and `@opencode/core` 2.0.22 npm distributions were inspected as protocol references only, not added as project dependencies. An isolated native server and supported native import created a synthetic completed session. Two exports matched exactly, and forced one-message API pages accounted independently for its three messages. No provider inference or personal session access was used for this probe.
+
+The export implementation filters unfinished assistant, shell and compaction records. Therefore the reverse reader uses the supported unfiltered API instead: `GET /api/session/:id` and `GET /api/session/:id/message`. JSON responses are enveloped in `data`; message pages also contain `cursor.previous` and `cursor.next`. The first page accepts `order=asc&limit=100`. Subsequent pages carry only the opaque cursor and limit: combining cursor with order is rejected. Every nonempty page has a next cursor; the final empty page has null cursors. The reader must follow that terminal page, not infer completion from a short page.
+
+Use a private, unregistered `serve --stdio` helper bound to loopback, not the managed background service. The installed restart contract states that unregistered servers do not sweep/resume suspended executions. Stdout reports a JSON `url`; a generated per-helper `OPENCODE_SERVER_PASSWORD` enables Basic authentication. This password is held in memory, is never a provider credential, and is not logged or persisted by ThreadShift. Source operations are limited to selected-session GET requests; native logs/database housekeeping are distinct from conversation mutation. `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, and `XDG_STATE_HOME` successfully isolated the probe store.
+
+Completed-boundary evidence consists of the durable final `idle` message, matching session idle/outcome metadata, completed assistant messages, and terminal tool/shell/compaction states. Two full metadata/page inventories must agree. This is an observed stable transcript boundary, not an exclusive source lock. Unknown boundary/coverage is incomplete and cannot trigger reverse launch.
+
+Codex CLI 0.162.1 `exec --json -` accepts stdin and persists by default. The earlier authorized dummy native run emitted `thread.started` with `thread_id`, `turn.started`, `item.completed`, and `turn.completed`. The checked-in success contract is synthetic with that observed shape; failure examples are synthetic negative-parser cases, not claimed native failure observations. Native reverse continuation still requires acceptance testing.
+
 Last checked: 2026-10-13 on Windows 11, Node.js v24.12.0.
 
 These are historical first-slice probe results, not a published support matrix. A later small Windows live run and the current privacy changes are recorded in [validation evidence](validation.md); broader native acceptance remains pending.
