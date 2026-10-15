@@ -7,6 +7,7 @@ export interface ProcessSpec {
   args: string[];
   cwd: string;
   env?: Record<string, string>;
+  stdin?: string;
   timeoutMs: number;
   maxOutputBytes?: number;
 }
@@ -78,7 +79,7 @@ export function runProcess(spec: ProcessSpec, signal?: AbortSignal): Promise<Pro
         cwd: spec.cwd,
         env: spec.env ? { ...process.env, ...spec.env } : process.env,
         windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [spec.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
         shell: false,
         detached: process.platform !== "win32",
       });
@@ -92,12 +93,14 @@ export function runProcess(spec: ProcessSpec, signal?: AbortSignal): Promise<Pro
     const outputLimit = spec.maxOutputBytes ?? 64 * 1024 * 1024;
     let outputBytes = 0;
     let settled = false;
+    let inputFinished = spec.stdin === undefined;
     let terminating: ProcessError | undefined;
     let terminationDeadline: NodeJS.Timeout | undefined;
 
     const finishError = (error: ProcessError) => {
       if (settled || terminating) return;
       terminating = error;
+      child.stdin?.destroy();
       terminateProcessTree(child, (message) => { terminating = new ProcessError(`${error.message}. ${message}`, error.code); });
       terminationDeadline = setTimeout(() => {
         if (settled) return;
@@ -105,8 +108,8 @@ export function runProcess(spec: ProcessSpec, signal?: AbortSignal): Promise<Pro
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
         child.kill("SIGKILL");
-        child.stdout.destroy();
-        child.stderr.destroy();
+        child.stdout!.destroy();
+        child.stderr!.destroy();
         rejectPromise(new ProcessError(`${terminating?.message ?? error.message} Process close was not confirmed; descendant cleanup is unverified.`, error.code));
       }, 3000);
       terminationDeadline.unref();
@@ -124,8 +127,12 @@ export function runProcess(spec: ProcessSpec, signal?: AbortSignal): Promise<Pro
       }
       target.push(chunk);
     };
-    child.stdout.on("data", collect(stdout));
-    child.stderr.on("data", collect(stderr));
+    child.stdout!.on("data", collect(stdout));
+    child.stderr!.on("data", collect(stderr));
+    if (child.stdin && spec.stdin !== undefined) {
+      child.stdin.on("error", () => finishError(new ProcessError("Process closed its input unexpectedly", "PROCESS_FAILED")));
+      child.stdin.end(spec.stdin, "utf8", () => { inputFinished = true; });
+    }
     child.on("error", (error: NodeJS.ErrnoException) => {
       if (settled) return;
       settled = true;
@@ -146,6 +153,7 @@ export function runProcess(spec: ProcessSpec, signal?: AbortSignal): Promise<Pro
         rejectPromise(new ProcessError(terminating.message, terminating.code, exitCode));
         return;
       }
+      if (!inputFinished) { rejectPromise(new ProcessError("Process closed before accepting its input", "PROCESS_FAILED", exitCode)); return; }
       resolvePromise({
         stdout: Buffer.concat(stdout).toString("utf8"),
         stderr: Buffer.concat(stderr).toString("utf8"),

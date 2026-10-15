@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 let runtime;
 try {
@@ -64,6 +65,28 @@ test("runProcess reports a missing executable as a stable error", async () => {
     runtime.runProcess({ executable: join(process.cwd(), "missing-binary"), args: [], cwd: process.cwd(), timeoutMs: 100 }, undefined),
     (error) => error.code === "EXECUTABLE_NOT_FOUND",
   );
+});
+
+test("runProcess delivers exact empty, Unicode and backpressured stdin bytes", async () => {
+  for (const input of ["", '雪 🧪 $(literal) & "quotes"\n'.repeat(80000)]) {
+    const result = await runtime.runProcess({ executable: process.execPath, args: ["test/fixtures/process-child.mjs", "stdin-hash"], cwd: process.cwd(), stdin: input, timeoutMs: 5000 });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(JSON.parse(result.stdout), { bytes: Buffer.byteLength(input), hash: createHash("sha256").update(input).digest("hex") });
+  }
+});
+
+test("runProcess rejects early stdin closure without leaking the input", async () => {
+  const marker = "SYNTHETIC_STDIN_PRIVATE_ONLY";
+  await assert.rejects(runtime.runProcess({ executable: process.execPath, args: ["test/fixtures/process-child.mjs", "stdin-close"], cwd: process.cwd(), stdin: marker.repeat(300000), timeoutMs: 5000 }), error => {
+    assert.equal(error.code, "PROCESS_FAILED"); assert.equal(error.message.includes(marker), false); return true;
+  });
+});
+
+test("runProcess can cancel while its stdin is backpressured", async () => {
+  const controller = new AbortController();
+  const pending = runtime.runProcess({ executable: process.execPath, args: ["test/fixtures/process-child.mjs", "stdin-wait"], cwd: process.cwd(), stdin: "x".repeat(8 * 1024 * 1024), timeoutMs: 5000 }, controller.signal);
+  const timer = setTimeout(() => controller.abort(), 100);
+  try { await assert.rejects(pending, error => error.code === "PROCESS_CANCELLED"); } finally { clearTimeout(timer); }
 });
 
 test("resolveHarness unwraps a standard Windows npm PowerShell shim", async () => {

@@ -134,7 +134,7 @@ export interface ConversionReport {
   warnings: Warning[];
   preparation: "prepared" | "failed" | "dry-run";
   outputPaths?: { bundle: string; context: string; report: string };
-  launchInstructions?: { executable: string; args: string[]; cwd: string };
+  launchInstructions?: { executable: string; args: string[]; cwd: string; stdinFiles?: string[]; stdinPreamble?: string };
   launch?: { status: "launched" | "failed"; sessionId?: string; exitCode: number | null };
 }
 
@@ -151,6 +151,7 @@ export interface ProcessSpec {
   args: string[];
   cwd: string;
   env?: Record<string, string>;
+  stdin?: string;
   timeoutMs: number;
   maxOutputBytes?: number;
 }

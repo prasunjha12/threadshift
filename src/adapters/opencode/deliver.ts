@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { replaceTextAtomically, writePackage } from "../../core/files.js";
+import { writePackage } from "../../core/files.js";
 import type { ConversionReport, HarnessDescriptor, PreparedHandoff, ProcessSpec, ThreadShiftBundle, SmartContext, Warning } from "../../core/types.js";
 import { runProcess } from "../../runtime/process.js";
 
@@ -45,13 +45,9 @@ export async function prepareOpenCode(
   return writePackage(directory, bundle, context, report, { ...options, launch });
 }
 
-export interface DeliveryResult {
-  status: "launched" | "failed";
-  sessionId?: string;
-  exitCode: number | null;
-  warnings: Warning[];
-  error?: string;
-}
+export { updateReport } from "../delivery.js";
+export type { DeliveryResult } from "../delivery.js";
+import type { DeliveryResult } from "../delivery.js";
 
 function sessionIdOf(event: Record<string, unknown>): string | undefined {
   if (typeof event.sessionID === "string") return event.sessionID;
@@ -86,8 +82,4 @@ export async function launchOpenCode(spec: ProcessSpec, signal?: AbortSignal): P
     const message = error instanceof Error ? error.message : String(error);
     return { status: "failed", exitCode, warnings: [], error: message };
   }
-}
-
-export async function updateReport(path: string, report: ConversionReport): Promise<void> {
-  await replaceTextAtomically(path, `${JSON.stringify(report, null, 2)}\n`);
 }
