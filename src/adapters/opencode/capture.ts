@@ -36,15 +36,6 @@ export async function captureOpenCode(options: Omit<OpenCodeReadOptions, "cwd"> 
   const rawRecords: RawRecord[] = [];
   const add = (sourceLocator: string, value: JsonValue) => {
     const safe = structuredClone(value);
-    const scrubMedia = (entry: JsonValue): void => {
-      if (Array.isArray(entry)) { entry.forEach(scrubMedia); return; }
-      if (!entry || typeof entry !== "object") return;
-      if (Array.isArray(entry.files)) for (const file of entry.files) if (file && typeof file === "object" && !Array.isArray(file) && Object.hasOwn(file, "data")) {
-        file.data = "[EXCLUDED: media content]"; exclusions.add("media.content");
-      }
-      Object.values(entry).forEach(scrubMedia);
-    };
-    scrubMedia(safe);
     rawRecords.push({ id: `raw-${rawRecords.length + 1}`, sourceLocator, value: safe });
   };
   const base = `session/${options.sessionId}`;
@@ -54,7 +45,6 @@ export async function captureOpenCode(options: Omit<OpenCodeReadOptions, "cwd"> 
     add(locator, message.info);
     message.parts.forEach((part, index) => add(`${locator}/content/${index}`, part));
   }
-  if (exclusions.has("media.content")) warnings.push({ code: "MEDIA_CONTENT_EXCLUDED", message: "Inline attachment content was excluded; safe reference metadata may remain.", eventIds: [] });
   const fork = first.session.fork !== undefined || first.session.parentID !== undefined;
   const complete = first.coverageComplete && first.terminalBoundary && !fork;
   if (!complete) warnings.push({ code: fork ? "OPENCODE_FORK_HISTORY_UNVERIFIED" : "OPENCODE_BOUNDARY_UNKNOWN", message: fork ? "Inherited fork or parent history was not independently accounted for; capture is incomplete." : "A completed source boundary could not be established; capture is incomplete.", eventIds: [] });

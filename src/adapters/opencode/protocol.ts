@@ -117,8 +117,15 @@ export async function readOpenCodeSnapshot(options: OpenCodeReadOptions, signal?
       parts.some(part => part.type === "tool" && ["running", "streaming", "pending"].includes(String(object(part.state).status))));
     const last = messages.at(-1)?.info;
     const sessionTime = object(session.time);
-    const unknownToolState = messages.some(({ parts }) => parts.some(part => part.type === "tool" && !["streaming", "running", "pending", "completed", "error"].includes(String(object(part.state).status))));
-    const terminalBoundary = !unknownToolState && last?.type === "idle" && ["succeeded", "failed", "interrupted"].includes(String(last.outcome)) && last.outcome === session.outcome && object(last.time).created === sessionTime.idle;
+    const validTime = (value: JsonValue | undefined): value is number => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 8640000000000000;
+    const unverifiedTerminal = messages.some(({ info, parts }) => {
+      const time = object(info.time);
+      if (info.type === "assistant" && (!validTime(time.completed) || time.completed < (time.created as number))) return true;
+      if (info.type === "shell" && (!["exited", "timeout", "killed"].includes(String(info.status)) || !validTime(time.completed) || time.completed < (time.created as number))) return true;
+      if (info.type === "compaction" && !["completed", "failed"].includes(String(info.status))) return true;
+      return parts.some(part => part.type === "tool" && !["completed", "error"].includes(String(object(part.state).status)));
+    });
+    const terminalBoundary = !unverifiedTerminal && last?.type === "idle" && ["succeeded", "failed", "interrupted"].includes(String(last.outcome)) && last.outcome === session.outcome && validTime(sessionTime.idle) && object(last.time).created === sessionTime.idle;
     return { session, messages, state: active ? "active" : terminalBoundary ? "idle" : "unknown", terminalBoundary, coverageComplete: complete };
   } catch (error) {
     if (error instanceof ThreadShiftError) throw error;

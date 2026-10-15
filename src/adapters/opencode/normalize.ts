@@ -20,7 +20,7 @@ export function normalizeOpenCode(records: RawRecord[]): { events: Event[]; warn
     if (value.type === "text" && raw.sourceLocator.includes("/content/")) { push(raw, "assistant", typeof value.text === "string" ? value.text : ""); continue; }
     if (value.type === "tool" && typeof value.id === "string" && typeof value.name === "string") {
       const state = object(value.state);
-      if (state && ["completed", "error"].includes(String(state.status))) {
+      if (state && object(state.input) && ["completed", "error"].includes(String(state.status))) {
         const callId = `${raw.sourceLocator}/call/${value.id}`;
         push(raw, "tool-call", `Tool: ${value.name}\nArguments: ${JSON.stringify(state.input ?? null)}`, ":call", callId);
         push(raw, "tool-result", `Status: ${String(state.status)}\nResult: ${JSON.stringify(state.content ?? state.error ?? null)}`, ":result", callId);

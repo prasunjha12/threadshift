@@ -59,4 +59,3 @@ test("Codex preparation regenerates sanitized context and defaults to context-on
   assert.ok(attachedReport.warnings.some(x => x.code === "FULL_BUNDLE_ATTACHMENT"));
   await assert.rejects(prepareCodex(workspace, bundle, compiled, report, descriptor, { overwrite: true }), error => error.code === "INVALID_ARGUMENT");
 });
-

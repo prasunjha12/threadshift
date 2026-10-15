@@ -223,3 +223,33 @@ test("native Git rename from a secret filename is excluded before hashing and di
   assert.equal(state.changedFiles.some((entry) => entry.digest), false);
   assert.equal(JSON.stringify(state).includes("SYNTHETIC_PRIVATE_BODY"), false);
 });
+
+test("recognized OpenCode text state is private across linked copies and outbound preparation", async t => {
+  const root=await temporary(t);const bundle=validBundle();bundle.manifest.schemaVersion=2;bundle.source.harness="opencode";bundle.workspace.root=root;
+  const marker="SYNTHETIC_TEXT_PROVIDER_PRIVATE";
+  bundle.history.rawRecords[0].value={type:"text",text:"Visible answer",state:{payload:marker},futureSafeField:4};
+  bundle.history.events[0].text=marker;bundle.handoff.latestRequest.value=marker;
+  bundle.provenance=[{value:marker,origin:"source-stated",eventIds:["event-1"]}];bundle.warnings=[{code:"LINKED",message:marker,eventIds:["event-1"]}];
+  const safe=sanitizeBundle(bundle);assert.equal(JSON.stringify(safe).includes(marker),false);assert.equal(safe.history.rawRecords[0].value.text,"Visible answer");assert.equal(safe.history.rawRecords[0].value.futureSafeField,4);assert.ok(safe.manifest.exclusions.includes("provider-state"));assert.deepEqual(sanitizeBundle(safe),safe);
+  const {prepareCodex}=await import("../dist/adapters/codex/deliver.js");const {compileSmart}=await import("../dist/context/smart.js");const {createReport}=await import("../dist/pipeline.js");
+  const context=compileSmart(bundle,{maxCharacters:24000});const prepared=await prepareCodex(join(root,"output"),bundle,context,createReport(bundle,context,"0.162.1",{preparation:"prepared",destination:"codex"}),{executable:process.execPath,argsPrefix:[]},{overwrite:false,attachBundle:true});assert.equal(prepared.launch.stdin.includes(marker),false);
+});
+
+test("imported inline media is excluded canonically with linked copies before full attachment", async t => {
+  const root=await temporary(t);const bundle=validBundle();bundle.manifest.schemaVersion=2;bundle.source.harness="opencode";bundle.workspace.root=root;
+  const marker="SYNTHETIC_IMPORTED_MEDIA_PRIVATE";
+  bundle.history.rawRecords[0].value={type:"user",files:[{data:marker,mime:"image/png",source:{type:"uri",uri:"https://example.invalid/image.png"}}],futureSafeField:4};
+  bundle.history.events[0].text=marker;bundle.handoff.latestRequest.value=marker;bundle.provenance=[{value:marker,origin:"source-stated",eventIds:["event-1"]}];bundle.warnings=[{code:"LINKED",message:marker,eventIds:["event-1"]}];
+  const path=join(root,"import.json");await writeFile(path,JSON.stringify(bundle));const original=await readFile(path,"utf8");const safe=await loadBundle(path);
+  assert.equal(JSON.stringify(safe).includes(marker),false);assert.ok(safe.manifest.exclusions.includes("media.content"));assert.equal(safe.history.rawRecords[0].value.futureSafeField,4);assert.match(safe.history.rawRecords[0].value.files[0].source.uri,/example.invalid/);assert.deepEqual(sanitizeBundle(safe),safe);assert.equal(await readFile(path,"utf8"),original);
+  await writeBundle(join(root,"safe.json"),bundle,{overwrite:false});assert.equal((await readFile(join(root,"safe.json"),"utf8")).includes(marker),false);
+  const {prepareCodex}=await import("../dist/adapters/codex/deliver.js");const {compileSmart}=await import("../dist/context/smart.js");const {createReport}=await import("../dist/pipeline.js");const context=compileSmart(bundle,{maxCharacters:24000});
+  const prepared=await prepareCodex(join(root,"output"),bundle,context,createReport(bundle,context,"0.162.1",{preparation:"prepared",destination:"codex"}),{executable:process.execPath,argsPrefix:[]},{overwrite:false,attachBundle:true});assert.equal(prepared.launch.stdin.includes(marker),false);
+});
+
+test("safe visible OpenCode text survives provider-state exclusion in normalized context", () => {
+  const bundle=validBundle();bundle.manifest.schemaVersion=2;bundle.source.harness="opencode";
+  bundle.history.rawRecords[0].value={type:"text",text:"Visible answer",state:{payload:"SYNTHETIC_PROVIDER_ONLY"}};
+  bundle.history.events[0].text="Visible answer";
+  const safe=sanitizeBundle(bundle);assert.equal(safe.history.events[0].text,"Visible answer");assert.equal(JSON.stringify(safe).includes("SYNTHETIC_PROVIDER_ONLY"),false);
+});

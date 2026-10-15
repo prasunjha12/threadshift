@@ -85,3 +85,14 @@ test("capture checks version, byte bounds, cancellation and timeout", async t =>
   try { await assert.rejects(captureOpenCode(stalled.options, controller.signal), error => error.code === "PROCESS_CANCELLED"); } finally { clearTimeout(timer); }
   await assert.rejects(captureOpenCode({ ...stalled.options, timeoutMs: 300 }), error => error.code === "PROCESS_TIMEOUT");
 });
+
+test("malformed terminal timestamps and unknown shell/compaction states cannot claim complete", async t => {
+  for(const mode of ["null-completed","string-completed","unknown-shell-state","unknown-compaction-state"]){
+    const {options}=await fixture(t,mode);const capture=await captureOpenCode(options);assert.equal(capture.completeness,"incomplete",mode);
+  }
+});
+
+test("completed result without native input never invents a tool call", async t => {
+  const {options}=await fixture(t,"missing-tool-input");const capture=await captureOpenCode(options);
+  assert.equal(capture.events.some(x=>x.kind==="tool-call"),false);assert.ok(capture.events.some(x=>x.kind==="unknown"));assert.ok(capture.warnings.some(x=>x.code==="UNKNOWN_EVENT_PRESERVED"));assert.ok(capture.rawRecords.some(x=>JSON.stringify(x.value).includes("1 test failed")));
+});

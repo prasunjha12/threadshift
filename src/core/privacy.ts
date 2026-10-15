@@ -76,7 +76,17 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
           entry.time = Object.fromEntries(Object.entries(time).filter(([key, value]) => ["created", "completed"].includes(key) && typeof value === "number"));
         } else if (Object.hasOwn(entry, "time")) delete entry.time;
       }
+      if (Array.isArray(entry.files)) for (const file of entry.files) {
+        if (file && typeof file === "object" && !Array.isArray(file) && Object.hasOwn(file, "data")) {
+          file.data = "[EXCLUDED: media content]";
+          exclusions.add("media.content"); excludedRaw.add(raw.id);
+        }
+      }
       if (bundle.source.harness === "opencode") {
+        if (entry.type === "text" && Object.hasOwn(entry, "state")) {
+          entry.state = "[EXCLUDED: provider-private state]";
+          exclusions.add("provider-state"); excludedRaw.add(raw.id);
+        }
         for (const field of ["providerState", "providerResultState", "providerContext"]) if (Object.hasOwn(entry, field)) {
           entry[field] = "[EXCLUDED: provider-private state]";
           exclusions.add("provider-state");
@@ -94,9 +104,14 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
     } else if (references(value, rules)) { raw.value = omitted; excludedRaw.add(raw.id); }
   }
   const excludedEvents = new Set<string>();
+  const rawById = new Map(bundle.history.rawRecords.map(raw => [raw.id, raw]));
   for (const event of bundle.history.events) {
     if (event.rawRecordIds.some((id) => excludedRaw.has(id)) || (event.text && referencesPrivatePath(event.text, rules))) {
-      event.text = omitted;
+      const visibleTextIsSafe = bundle.source.harness === "opencode" && typeof event.text === "string" && !referencesPrivatePath(event.text, rules) && event.rawRecordIds.length > 0 && event.rawRecordIds.every(id => {
+        const value = rawById.get(id)?.value;
+        return value && typeof value === "object" && !Array.isArray(value) && ["text", "user"].includes(String(value.type)) && value.text === event.text;
+      });
+      if (!visibleTextIsSafe) event.text = omitted;
       excludedEvents.add(event.id);
     }
   }
@@ -121,6 +136,7 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
     exclusions.add("confidential-file-content");
     if (!bundle.warnings.some((entry) => entry.code === "CONFIDENTIAL_CONTENT_EXCLUDED")) bundle.warnings.push({ code: "CONFIDENTIAL_CONTENT_EXCLUDED", message: "Confidential-file content was excluded from history and patches; metadata may remain.", eventIds: [] });
   }
+  if (exclusions.has("media.content") && !bundle.warnings.some(entry => entry.code === "MEDIA_CONTENT_EXCLUDED")) bundle.warnings.push({ code: "MEDIA_CONTENT_EXCLUDED", message: "Inline attachment content was excluded; safe reference metadata may remain.", eventIds: [] });
   bundle.manifest.exclusions = [...exclusions];
   const redacted = redactRecord(bundle as unknown as JsonValue);
   const safe = validateBundle(redacted.value);

@@ -16,6 +16,11 @@ if (input.mode === "changed" && started > 1) data.messages[0].text = "Different 
 if (input.mode === "active") delete data.messages[1].time.completed;
 if (input.mode === "running-tool") data.messages[1].content[1].state.status = "running";
 if (input.mode === "unknown-tool-state") data.messages[1].content[1].state.status = "future-state";
+if (input.mode === "null-completed") data.messages[1].time.completed = null;
+if (input.mode === "string-completed") data.messages[1].time.completed = "complete";
+if (input.mode === "unknown-shell-state") data.messages.splice(2,0,{type:"shell",id:"msg_shell",command:"historical command",status:"future-state",time:{created:2500}});
+if (input.mode === "unknown-compaction-state") data.messages.splice(2,0,{type:"compaction",id:"msg_compaction",status:"future-state",time:{created:2500}});
+if (input.mode === "missing-tool-input") delete data.messages[1].content[1].state.input;
 if (input.mode === "tied-time") data.messages[0].time.created = data.messages[1].time.created;
 if (input.mode === "unknown-boundary") data.messages.pop();
 if (input.mode === "fork") data.info.fork = { sessionID: "ses_parent", boundary: { type: "through", messageID: "msg_parent" } };
