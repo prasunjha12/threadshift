@@ -71,3 +71,17 @@ All three native checks and CI runs must pass before changing support claims.
 ## Reviewed CI action revisions
 
 The immutable revisions were checked against the upstream release commits: [checkout v4.2.2](https://github.com/actions/checkout/commit/11bd71901bbe5b1630ceea73d27597364c9af683), [setup-node v4.4.0](https://github.com/actions/setup-node/commit/49933ea5288caeca8642d1e84afbd3f7d6820020). The workflow uses read-only repository permissions and disables persisted checkout credentials.
+
+## Reverse handover verification — 2026-10-15
+
+The local feature branch adds OpenCode 2.0.22 sources, Codex CLI 0.162.1 destinations and schema-2 OpenCode bundles. Schema-1 Codex compatibility is retained. Windows build/typecheck, the fixture suite and a clean offline tarball-consumer installation were checked. The three-platform workflow includes the new suites, but this branch has not been pushed, so its macOS/Linux CI results are unverified. Native macOS/Linux inference was not run.
+
+A real configured provider authored a paused OpenCode partial parser fix in a disposable Git repository with spaces and Unicode in its path. The source had 7 flat messages and 19 canonical safe records including content records. Independent inventory matched all 19; a later capture with the same project privacy rules had the same source digest. Dry run, preparation and explicit Codex launch succeeded. The fresh Codex session completed a turn, exited zero and cited the exact bundle. Default input included only the sanitized continuation; the confidential-file sentinel was absent from the archive and continuation.
+
+A distinct native Codex → OpenCode → Codex exercise established the requirement in Codex, then delivered ThreadShift's prepared context through OpenCode's supported prompt API. OpenCode implemented string trimming, retained the interface/tests and explicitly left null handling unfinished. The reverse capture preserved all 21 expected records, retained the first bundle ID and intermediate state, used a separate source identity, and matched its later source digest. Final Codex completed a turn and cited the reverse bundle. This API-driven forward exercise does not certify the original OpenCode `run` automatic process-exit gate.
+
+**Native edit acceptance remains blocked.** Both final Codex sessions reported read-only permissions and `CreateDesktopW failed: 5` when attempting shell work. They did not apply the remaining null fix or rerun tests. Independent local test runs confirmed 2 passed and 1 failed in each dummy workspace. No model, authentication, approval or sandbox settings were overridden. Session/turn completion proves delivery here, not task completion. A writable native Codex environment is still required to certify the full editing journey.
+
+Native inventories, histories, prompts and detailed audit artifacts remain outside this public checkout. Source reads used only selected-session GET requests; authorized source setup used native create/prompt APIs. No native transcript injection or database seeding was used. Pattern-based secret scanning found no leaks in the checked product history; this is not a guarantee about arbitrary confidential prose or unknown encodings.
+
+The native collector accepts both directions, preserves its existing forward defaults, requires explicit provider classification for launch, retains prepared packages after failure and always leaves independent inventory/response audits pending until separately performed.

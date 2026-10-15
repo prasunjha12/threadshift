@@ -2,7 +2,7 @@
 
 Move a paused coding task between Codex CLI and OpenCode while preserving safe conversation history and current workspace evidence.
 
-This early source preview implements **Codex CLI → OpenCode, Smart mode**. A fresh Windows live handover completed without follow-up clarification after the privacy fixes. Native process completion and macOS/Linux validation remain release gates. See [validation evidence](docs/validation.md).
+This early source preview implements **Codex CLI → OpenCode** and **OpenCode → Codex CLI**, using Smart context. Windows native delivery was verified in both directions; final reverse edits remain blocked by the tested Codex read-only environment. Native editing acceptance and macOS/Linux validation remain release gates. See [validation evidence](docs/validation.md).
 
 ## Set up
 

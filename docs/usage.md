@@ -1,6 +1,6 @@
 # Usage and troubleshooting
 
-`handoff` captures Codex and prepares an OpenCode package. `export` writes a mode-independent canonical bundle. `import` validates a saved bundle and prepares a package. Only Smart destination context is implemented; full/compact requests fail clearly.
+`handoff` captures Codex or OpenCode and prepares a package for the other agent. `export` writes a mode-independent canonical bundle. `import` validates a saved bundle and prepares a package. Only Smart destination context is implemented; full/compact requests fail clearly.
 
 ## Options
 
@@ -20,7 +20,7 @@
 | `--codex-home DIR` | Codex session store selection; source commands only |
 | `--json` | Machine-readable result/error on stdout |
 
-Without `--output`, files go under the user's `~/.threadshift/exports` or `~/.threadshift/handoffs`. Source capture reads the configured Codex store; ThreadShift does not load authentication files. OpenCode inherits its own provider configuration at launch.
+Without `--output`, files go under the user's `~/.threadshift/exports` or `~/.threadshift/handoffs`. Source capture reads the selected agent store; ThreadShift does not load authentication files. The destination inherits its own provider configuration at launch.
 
 ## Errors and recovery
 
