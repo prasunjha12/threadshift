@@ -8,6 +8,7 @@ export type ThreadShiftErrorCode =
   | "EXECUTABLE_NOT_FOUND"
   | "PROCESS_FAILED"
   | "OUTPUT_LIMIT"
+  | "SOURCE_INCOMPLETE"
   | "SOURCE_ACTIVE"
   | "SOURCE_CHANGED"
   | "CODEX_PROTOCOL"

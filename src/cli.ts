@@ -7,7 +7,7 @@ import { ThreadShiftError } from "./core/errors.js";
 import { assertDefaultOutputContained, assertSafePackageOutput, writeBundle } from "./core/files.js";
 import { sanitizeBundle } from "./core/privacy.js";
 import { loadPrivacyRules } from "./core/privacy-paths.js";
-import type { ConversionReport, ThreadShiftBundle, Warning } from "./core/types.js";
+import type { ConversionReport, Harness, ThreadShiftBundle, Warning } from "./core/types.js";
 import { resolveHarness, runProcess } from "./runtime/process.js";
 import { requireCompatibleVersion } from "./runtime/compatibility.js";
 import { compileSmart } from "./context/smart.js";
@@ -15,6 +15,7 @@ import { deriveHandoff, sanitizeHandoffFields } from "./context/handoff.js";
 import { captureBundle, createReport, loadBundle } from "./pipeline.js";
 import { compareWorkspace, excludeGeneratedOutput } from "./workspace/compare.js";
 import { inspectWorkspace } from "./workspace/inspect.js";
+import { prepareCodex, launchCodex } from "./adapters/codex/deliver.js";
 import { prepareOpenCode, launchOpenCode, updateReport } from "./adapters/opencode/deliver.js";
 
 interface Options {
@@ -43,8 +44,9 @@ const help = `ThreadShift — portable coding-agent handoffs
 
 Usage:
   threadshift handoff --from codex --to opencode --session <id> [options]
-  threadshift export --from codex --session <id> [options]
-  threadshift import --bundle <file> --to opencode [options]
+  threadshift handoff --from opencode --to codex --session <id> [options]
+  threadshift export --from codex|opencode --session <id> [options]
+  threadshift import --bundle <file> --to codex|opencode [options]
 
 Options:
   --workspace <dir>                 Workspace to inspect or continue in
@@ -56,7 +58,7 @@ Options:
   --opencode-bin <path>             OpenCode executable override
   --codex-home <dir>                Codex home for source access
   --dry-run                         Inspect and report without writing files
-  --launch                          Explicitly start a fresh OpenCode run
+  --launch                          Explicitly start a fresh destination run
   --attach-bundle                   Include the full sanitized archive in addition to context
   --overwrite                       Replace existing output
   --accept-workspace-mismatch       Continue after reviewing a changed snapshot
@@ -120,19 +122,22 @@ function parseArgs(argv: string[]): Options | { help: true } {
   };
   if (options.dryRun && options.launch) throw new ThreadShiftError("--dry-run and --launch cannot be used together.", "INVALID_ARGUMENT");
   if (command === "handoff" || command === "export") {
-    if (options.from !== "codex") throw new ThreadShiftError(`--from codex is required for ${command}.`, "INVALID_ARGUMENT");
+    if (options.from !== "codex" && options.from !== "opencode") throw new ThreadShiftError(`--from codex|opencode is required for ${command}.`, "INVALID_ARGUMENT");
     if (!options.session) throw new ThreadShiftError("--session <id> is required; session selection is explicit in this slice.", "INVALID_ARGUMENT");
   }
-  if (command === "handoff" && options.to !== "opencode") throw new ThreadShiftError("--to opencode is required for handoff.", "INVALID_ARGUMENT");
+  if (command === "handoff" && !((options.from === "codex" && options.to === "opencode") || (options.from === "opencode" && options.to === "codex"))) throw new ThreadShiftError("Supported handoffs are codex to opencode and opencode to codex.", "INVALID_ARGUMENT");
   if (command === "import") {
     if (!options.bundle) throw new ThreadShiftError("--bundle <file> is required for import.", "INVALID_ARGUMENT");
-    if (options.to !== "opencode") throw new ThreadShiftError("--to opencode is required for import.", "INVALID_ARGUMENT");
+    if (options.to !== "opencode" && options.to !== "codex") throw new ThreadShiftError("--to codex|opencode is required for import.", "INVALID_ARGUMENT");
   }
   if (command === "export" && options.launch) throw new ThreadShiftError("--launch is only supported by handoff or import.", "INVALID_ARGUMENT");
   if (command === "export" && options.to) throw new ThreadShiftError("export writes a canonical bundle and does not take --to.", "INVALID_ARGUMENT");
   if (command === "export" && options.attachBundle) throw new ThreadShiftError("--attach-bundle is only supported by handoff or import.", "INVALID_ARGUMENT");
   if (command !== "import" && options.acceptWorkspaceMismatch) throw new ThreadShiftError("--accept-workspace-mismatch is only supported by import.", "INVALID_ARGUMENT");
-  if (command === "import" && (options.codexBin || options.codexHome || options.session || options.from)) throw new ThreadShiftError("Codex source flags cannot be used while importing a saved bundle.", "INVALID_ARGUMENT");
+  if (command === "import" && (options.codexHome || options.session || options.from)) throw new ThreadShiftError("Codex source flags cannot be used while importing a saved bundle.", "INVALID_ARGUMENT");
+  if (options.codexHome && options.from !== "codex") throw new ThreadShiftError("--codex-home requires a Codex source.", "INVALID_ARGUMENT");
+  if (options.codexBin && options.from !== "codex" && options.to !== "codex") throw new ThreadShiftError("--codex-bin requires a Codex source or destination.", "INVALID_ARGUMENT");
+  if (options.opencodeBin && options.from !== "opencode" && options.to !== "opencode") throw new ThreadShiftError("--opencode-bin requires an OpenCode source or destination.", "INVALID_ARGUMENT");
   return options;
 }
 
@@ -147,13 +152,13 @@ async function readHandoffFields(path: string | undefined): Promise<unknown> {
   }
 }
 
-async function destinationVersion(opencodeBin?: string): Promise<{ descriptor: Awaited<ReturnType<typeof resolveHarness>>; version: string }> {
-  const descriptor = await resolveHarness("opencode", opencodeBin);
+async function destinationVersion(harness: Harness, executable?: string): Promise<{ descriptor: Awaited<ReturnType<typeof resolveHarness>>; version: string }> {
+  const descriptor = await resolveHarness(harness, executable);
   const result = await runProcess({ executable: descriptor.executable, args: [...descriptor.argsPrefix, "--version"], cwd: process.cwd(), timeoutMs: 5_000, maxOutputBytes: 16 * 1024 });
-  if (result.exitCode !== 0) throw new ThreadShiftError("Could not read the OpenCode CLI version.", "UNSUPPORTED_RUNTIME");
+  if (result.exitCode !== 0) throw new ThreadShiftError("Could not read the destination CLI version.", "UNSUPPORTED_RUNTIME");
   const version = result.stdout.match(/(?:opencode\s+)?v?(\d+\.\d+\.\d+)/i)?.[1];
-  if (!version) throw new ThreadShiftError("OpenCode returned an unrecognized version string.", "UNSUPPORTED_RUNTIME");
-  requireCompatibleVersion("opencode", version);
+  if (!version) throw new ThreadShiftError("Destination returned an unrecognized version string.", "UNSUPPORTED_RUNTIME");
+  requireCompatibleVersion(harness, version);
   return { descriptor, version };
 }
 
@@ -170,7 +175,7 @@ function reportOutput(options: Options, report: ConversionReport): void {
   if (options.json) process.stdout.write(`${JSON.stringify(report)}\n`);
   else {
     process.stdout.write(`ThreadShift ${report.preparation}: ${report.preservedCounts.events} events preserved, ${report.selectedCounts.events} selected.\n`);
-    if (report.launch) process.stdout.write(`OpenCode ${report.launch.status}${report.launch.sessionId ? ` (${report.launch.sessionId})` : ""}.\n`);
+    if (report.launch) process.stdout.write(`${report.destination.harness} ${report.launch.status}${report.launch.sessionId ? ` (${report.launch.sessionId})` : ""}.\n`);
     for (const warning of report.warnings) process.stdout.write(`Warning: ${warning.message}\n`);
   }
 }
@@ -186,7 +191,7 @@ async function outputPath(options: Options, bundle: ThreadShiftBundle): Promise<
 async function executeExport(options: Options, signal: AbortSignal): Promise<number> {
   const workspaceRoot = resolve(options.workspace ?? process.cwd());
   const handoffFields = await readHandoffFields(options.handoffFile);
-  const { bundle } = await captureBundle({ sessionId: options.session!, workspaceRoot, ...(options.codexBin ? { codexBin: options.codexBin } : {}), ...(options.codexHome ? { codexHome: options.codexHome } : {}), handoffFields }, signal);
+  const { bundle } = await captureBundle({ from: options.from as Harness, ...(options.opencodeBin ? { opencodeBin: options.opencodeBin } : {}), sessionId: options.session!, workspaceRoot, ...(options.codexBin ? { codexBin: options.codexBin } : {}), ...(options.codexHome ? { codexHome: options.codexHome } : {}), handoffFields }, signal);
   const output = await outputPath(options, bundle);
   const summary = { status: options.dryRun ? "dry-run" : "exported", bundleId: bundle.manifest.bundleId, path: output, completeness: bundle.manifest.completeness, counts: bundle.manifest.counts, warnings: bundle.warnings };
   if (!options.dryRun) await writeBundle(output, bundle, { overwrite: options.overwrite });
@@ -198,20 +203,21 @@ async function executeExport(options: Options, signal: AbortSignal): Promise<num
 async function executeHandoff(options: Options, signal: AbortSignal): Promise<number> {
   const workspaceRoot = resolve(options.workspace ?? process.cwd());
   const handoffFields = await readHandoffFields(options.handoffFile);
-  const { bundle, workspace } = await captureBundle({ sessionId: options.session!, workspaceRoot, ...(options.codexBin ? { codexBin: options.codexBin } : {}), ...(options.codexHome ? { codexHome: options.codexHome } : {}), handoffFields }, signal);
-  const destination = await destinationVersion(options.opencodeBin);
+  const { bundle, workspace } = await captureBundle({ from: options.from as Harness, ...(options.opencodeBin ? { opencodeBin: options.opencodeBin } : {}), sessionId: options.session!, workspaceRoot, ...(options.codexBin ? { codexBin: options.codexBin } : {}), ...(options.codexHome ? { codexHome: options.codexHome } : {}), handoffFields }, signal);
+  const destination = await destinationVersion(options.to as Harness, options.to === "codex" ? options.codexBin : options.opencodeBin);
+  if (options.launch && options.to === "codex" && bundle.manifest.completeness !== "complete") throw new ThreadShiftError("Automatic Codex launch requires a complete paused source; prepare or export it for review instead.", "SOURCE_INCOMPLETE");
   const context = compileSmart(bundle, { maxCharacters: options.contextCharacters });
   const output = await outputPath(options, bundle);
   await assertSafePackageOutput(output, [workspace.root]);
   const warnings: Warning[] = [];
   addOutputWarning(warnings, workspace.root, output);
-  const report = createReport(bundle, context, destination.version, { preparation: options.dryRun ? "dry-run" : "prepared", warnings });
+  const report = createReport(bundle, context, destination.version, { preparation: options.dryRun ? "dry-run" : "prepared", warnings, destination: options.to as Harness });
   report.outputPaths = { bundle: join(output, "session.threadshift.json"), context: join(output, "continuation.md"), report: join(output, "report.json") };
   if (options.dryRun) {
     reportOutput(options, report);
     return 0;
   }
-  const prepared = await prepareOpenCode(output, bundle, context, report, destination.descriptor, { overwrite: options.overwrite, attachBundle: options.attachBundle });
+  const prepared = await (options.to === "codex" ? prepareCodex : prepareOpenCode)(output, bundle, context, report, destination.descriptor, { overwrite: options.overwrite, attachBundle: options.attachBundle });
   if (options.launch) {
     const current = await inspectWorkspace(prepared.workspaceRoot);
     const comparisonWarnings = compareWorkspace(
@@ -219,11 +225,11 @@ async function executeHandoff(options: Options, signal: AbortSignal): Promise<nu
       excludeGeneratedOutput(current, output),
       options.acceptWorkspaceMismatch,
     );
-    const delivery = await launchOpenCode(prepared.launch, signal);
+    const delivery = await (options.to === "codex" ? launchCodex : launchOpenCode)(prepared.launch, signal);
     report.warnings.push(...comparisonWarnings, ...delivery.warnings);
     report.launch = { status: delivery.status, exitCode: delivery.exitCode, ...(delivery.sessionId ? { sessionId: delivery.sessionId } : {}) };
     if (delivery.status === "failed") {
-      report.warnings.push({ code: "DESTINATION_LAUNCH_FAILED", message: delivery.error ?? "OpenCode launch failed; prepared files were retained.", eventIds: [] });
+      report.warnings.push({ code: "DESTINATION_LAUNCH_FAILED", message: delivery.error ?? "Destination launch failed; prepared files were retained.", eventIds: [] });
       await updateReport(prepared.reportPath, report);
       reportOutput(options, report);
       return 1;
@@ -255,19 +261,20 @@ async function executeImport(options: Options, signal: AbortSignal): Promise<num
       const sanitized = sanitizeHandoffFields(handoffFields);
       return sanitizeBundle({ ...safeOriginal, warnings: [...safeOriginal.warnings, ...sanitized.warnings], handoff: deriveHandoff({ events: safeOriginal.history.events }, currentWorkspace, sanitized.fields) }, privacyRules);
     })();
-  const destination = await destinationVersion(options.opencodeBin);
+  const destination = await destinationVersion(options.to as Harness, options.to === "codex" ? options.codexBin : options.opencodeBin);
+  if (options.launch && options.to === "codex" && bundle.manifest.completeness !== "complete") throw new ThreadShiftError("Automatic Codex launch requires a complete paused source; prepare or export it for review instead.", "SOURCE_INCOMPLETE");
   const context = compileSmart(bundle, { maxCharacters: options.contextCharacters });
   const output = await outputPath(options, bundle);
   await assertSafePackageOutput(output, [currentWorkspace.root, resolve(options.bundle!)]);
   const warnings = [...workspaceWarnings];
   addOutputWarning(warnings, currentWorkspace.root, output);
-  const report = createReport(bundle, context, destination.version, { preparation: options.dryRun ? "dry-run" : "prepared", warnings });
+  const report = createReport(bundle, context, destination.version, { preparation: options.dryRun ? "dry-run" : "prepared", warnings, destination: options.to as Harness });
   report.outputPaths = { bundle: join(output, "session.threadshift.json"), context: join(output, "continuation.md"), report: join(output, "report.json") };
   if (options.dryRun) {
     reportOutput(options, report);
     return 0;
   }
-  const prepared = await prepareOpenCode(output, bundle, context, report, destination.descriptor, { overwrite: options.overwrite, workspaceRoot: currentWorkspace.root, protectedPaths: [resolve(options.bundle!)], attachBundle: options.attachBundle });
+  const prepared = await (options.to === "codex" ? prepareCodex : prepareOpenCode)(output, bundle, context, report, destination.descriptor, { overwrite: options.overwrite, workspaceRoot: currentWorkspace.root, protectedPaths: [resolve(options.bundle!)], attachBundle: options.attachBundle });
   if (options.launch) {
     const latestWorkspace = await inspectWorkspace(currentWorkspace.root);
     const capturedWorkspace = { ...originalBundle.workspace, git: originalBundle.git, warnings: [] };
@@ -276,11 +283,11 @@ async function executeImport(options: Options, signal: AbortSignal): Promise<num
       excludeGeneratedOutput(latestWorkspace, output),
       options.acceptWorkspaceMismatch,
     );
-    const delivery = await launchOpenCode(prepared.launch, signal);
+    const delivery = await (options.to === "codex" ? launchCodex : launchOpenCode)(prepared.launch, signal);
     report.warnings.push(...latestWarnings, ...delivery.warnings);
     report.launch = { status: delivery.status, exitCode: delivery.exitCode, ...(delivery.sessionId ? { sessionId: delivery.sessionId } : {}) };
     if (delivery.status === "failed") {
-      report.warnings.push({ code: "DESTINATION_LAUNCH_FAILED", message: delivery.error ?? "OpenCode launch failed; prepared files were retained.", eventIds: [] });
+      report.warnings.push({ code: "DESTINATION_LAUNCH_FAILED", message: delivery.error ?? "Destination launch failed; prepared files were retained.", eventIds: [] });
       await updateReport(prepared.reportPath, report);
       reportOutput(options, report);
       return 1;

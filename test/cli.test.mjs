@@ -286,3 +286,63 @@ test("cancelled destination stops its child and retains prepared outputs", async
   assert.throws(() => process.kill(pid, 0), (error) => error.code === "ESRCH");
   await stat(join(output, "session.threadshift.json"));
 });
+
+const reverseSource = resolve("test/fixtures/opencode-source.mjs");
+const reverseDestination = resolve("test/fixtures/codex-destination.mjs");
+async function reverseSetup(t, mode = "normal") {
+  const state = await setup(t);
+  const data = JSON.parse(await readFile(resolve("test/fixtures/opencode-native-contract.json"), "utf8"));
+  await writeFile(join(state.workspace, "source-fixture.json"), JSON.stringify({ data, mode }));
+  const args = ["handoff", "--from", "opencode", "--to", "codex", "--session", data.info.id,
+    "--workspace", state.workspace, "--output", state.output, "--opencode-bin", reverseSource, "--codex-bin", reverseDestination];
+  return { ...state, args, data };
+}
+
+test("reverse handoff dry run and launch use actual harness labels and stdin", async t => {
+  const { args, output, workspace } = await reverseSetup(t);
+  let result = await runCli([...args, "--dry-run", "--json"]);
+  assert.equal(result.exitCode, 0, result.stdout + result.stderr);
+  assert.equal(JSON.parse(result.stdout).destination.harness, "codex");
+  await assert.rejects(stat(output)); await assert.rejects(stat(join(workspace, "destination-input.json")));
+  result = await runCli([...args, "--launch", "--json"]);
+  assert.equal(result.exitCode, 0, result.stdout + result.stderr);
+  const report = JSON.parse(result.stdout); assert.equal(report.launch.status, "launched");
+  assert.equal(report.source.harness, "opencode");
+  const input = JSON.parse(await readFile(join(workspace, "destination-input.json"), "utf8"));
+  assert.deepEqual(input.args, ["exec", "--json", "-"]);
+  assert.match(input.stdin, /OpenCode/); assert.match(input.stdin, /historical/i);
+  const saved = JSON.parse(await readFile(join(output, "session.threadshift.json"), "utf8"));
+  assert.equal(saved.manifest.schemaVersion, 2); assert.equal(saved.history.rawRecords.length, 7);
+});
+
+test("OpenCode export and schema-2 import to Codex preserve identity and safe archive", async t => {
+  const { root, args, workspace, data } = await reverseSetup(t);
+  const path = join(root, "export.json");
+  const result = await runCli(["export", "--from", "opencode", "--session", data.info.id, "--workspace", workspace, "--opencode-bin", reverseSource, "--output", path, "--json"]);
+  assert.equal(result.exitCode, 0, result.stdout + result.stderr);
+  const original = await readFile(path, "utf8");
+  const imported = await runCli(["import", "--bundle", path, "--to", "codex", "--codex-bin", reverseDestination, "--workspace", workspace, "--output", join(root, "imported"), "--launch", "--json"]);
+  assert.equal(imported.exitCode, 0, imported.stdout + imported.stderr);
+  assert.equal(await readFile(path, "utf8"), original);
+  assert.equal(JSON.parse(imported.stdout).launch.status, "launched");
+});
+
+test("incomplete reverse history can be prepared but cannot launch", async t => {
+  const { args } = await reverseSetup(t, "fork");
+  const prepared = await runCli([...args, "--json"]);
+  assert.equal(prepared.exitCode, 0, prepared.stdout + prepared.stderr);
+  const launched = await runCli([...args, "--launch", "--overwrite", "--json"]);
+  assert.equal(JSON.parse(launched.stdout).error.code, "SOURCE_INCOMPLETE");
+});
+
+test("only supported source/destination pairs and relevant flags are accepted", async t => {
+  const { args } = await reverseSetup(t);
+  for (const extra of [["--codex-home", "unused"]]) {
+    const result = await runCli([...args, ...extra, "--dry-run", "--json"]);
+    assert.equal(JSON.parse(result.stdout).error.code, "INVALID_ARGUMENT");
+  }
+  for (const [from,to] of [["codex","codex"],["opencode","opencode"],["claude","codex"]]) {
+    const result = await runCli(["handoff", "--from", from, "--to", to, "--session", "synthetic", "--json"]);
+    assert.equal(JSON.parse(result.stdout).error.code, "INVALID_ARGUMENT");
+  }
+});

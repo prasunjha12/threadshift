@@ -45,3 +45,22 @@ Cancellation uses a POSIX process group with forced escalation, or Windows taskk
 Non-Git workspaces have no general content inventory or change detection; they record known instruction references and root metadata. Move the project yourself when changing machines. The bundle does not copy your repository.
 
 Source `complete` means all safely readable records returned by the pinned protocol survived a stable double read, with disclosed exclusions. A populated real-session count comparison and cross-process consistency acceptance are still pending. Fixture continuation proves attachment/argument plumbing; it cannot establish that an actual model understood or completed a task.
+
+## OpenCode to Codex
+
+Use `handoff --from opencode --to codex --session ID`, `export --from opencode --session ID`, or `import --bundle FILE --to codex`. Supply `--workspace` and an output path outside the workspace. `--codex-bin` selects the Codex destination executable; `--opencode-bin` selects the OpenCode source executable. Source-only `--from`, `--session` and `--codex-home` are rejected on import. Same-agent handoffs and other agents are unsupported. Import destination selection is independent of the saved source.
+
+Capture uses a private unregistered loopback helper and only selected-session GET requests, following every message page twice. Pause the source first. Unknown boundaries or unaccounted fork history are disclosed as incomplete and block automatic Codex launch (`SOURCE_INCOMPLETE`), while preparation/export remain available. No native messages are injected or replayed.
+
+Codex launch uses `exec --json -` with the selected continuation through stdin. `--attach-bundle` adds the complete sanitized archive explicitly. A valid `thread.started` identity, ordered started/completed turn, no error and zero exit are all required for success. This differs from the existing OpenCode process gate described above. Normal agent configuration applies; ThreadShift does not override model, authentication or approval settings.
+
+For a manual Codex retry, read `report.json`'s `launchInstructions`: change to `cwd`, combine `stdinPreamble` and the UTF-8 contents of `stdinFiles` (in order, separated by two newlines), and pipe that text to the exact executable and argument array. Review these files first. In PowerShell with a normal Codex installation:
+
+```powershell
+$r = Get-Content "C:\path\to\handoff\report.json" -Raw | ConvertFrom-Json
+$text = $r.launchInstructions.stdinPreamble + (($r.launchInstructions.stdinFiles | ForEach-Object { [System.IO.File]::ReadAllText($_) }) -join "`n`n")
+Set-Location $r.launchInstructions.cwd
+$text | & $r.launchInstructions.executable @($r.launchInstructions.args)
+```
+
+The native source stores, auth, configuration and provider-private state stay local. The report contains the input recipe, not a duplicate transcript. Repeated handovers may quote earlier continuations as history; they do not merge or fabricate native source identities. Smart selection can omit older context with disclosed budget/omission counts; its historical test results are not current verification.

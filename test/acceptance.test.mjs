@@ -70,3 +70,42 @@ test("complete fixture handoff preserves safe records, failed-test evidence and 
   assert.ok(invocation.argv.includes(join(output, "continuation.md")));
   assert.equal(invocation.argv.includes(join(output, "session.threadshift.json")), false);
 });
+
+test("fixture round trip carries attributed first context and distinct OpenCode state to Codex", async t => {
+  const root = await mkdtemp(join(resolve("work/acceptance"), "roundtrip-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = join(root, "project 雪"); await mkdir(workspace);
+  execFileSync("git", ["init", "--quiet"], { cwd: workspace });
+  const home = join(root, "home"); await mkdir(home);
+  await writeFile(join(workspace, "parser.mjs"), 'export const parse = value => value.trim();\n');
+  const run = (args) => {
+    const result = spawnSync(process.execPath, [resolve("dist/cli.js"), ...args, "--json"], { encoding: "utf8", timeout: 30000, windowsHide: true });
+    assert.equal(result.status, 0, result.stdout + result.stderr); return JSON.parse(result.stdout);
+  };
+  const first = join(root, "first");
+  const forward = run(["handoff", "--from", "codex", "--to", "opencode", "--session", "00000000-0000-4000-8000-000000000001", "--workspace", workspace, "--codex-home", home, "--codex-bin", resolve("test/fixtures/codex-server.mjs"), "--opencode-bin", resolve("test/fixtures/opencode-server.mjs"), "--output", first]);
+  const firstContext = await readFile(join(first, "continuation.md"), "utf8");
+  const firstBundle = JSON.parse(await readFile(join(first, "session.threadshift.json"), "utf8"));
+  assert.equal(firstBundle.manifest.schemaVersion, 1);
+  assert.match(firstContext, /Fix parser|User request/i);
+  // A saved version-1 bundle remains importable to the new destination independently of source.
+  run(["import", "--bundle", join(first, "session.threadshift.json"), "--to", "codex", "--codex-bin", resolve("test/fixtures/codex-destination.mjs"), "--output", join(root, "v1-import")]);
+  const data = JSON.parse(await readFile(resolve("test/fixtures/opencode-native-contract.json"), "utf8"));
+  data.messages[0].text = "Historical first ThreadShift continuation (selected requirement): Fix parser Unicode handling. First bundle: " + firstBundle.manifest.bundleId + "\nCurrent task: preserve Unicode and add the remaining regression.";
+  data.messages[1].content.find(x => x.type === "text").text = "OpenCode intermediate decision: retain the parser interface. Trim implemented; remaining work: add the Unicode regression and rerun tests. Earlier failure is historical.";
+  const original = JSON.stringify({ data, mode: "normal" });
+  await writeFile(join(workspace, "source-fixture.json"), original);
+  const output = join(root, "reverse");
+  const reverse = run(["handoff", "--from", "opencode", "--to", "codex", "--session", data.info.id, "--workspace", workspace, "--opencode-bin", resolve("test/fixtures/opencode-source.mjs"), "--codex-bin", resolve("test/fixtures/codex-destination.mjs"), "--output", output, "--launch"]);
+  assert.equal(reverse.launch.status, "launched");
+  const bundle = JSON.parse(await readFile(join(output, "session.threadshift.json"), "utf8"));
+  assert.equal(bundle.source.sessionId, data.info.id); assert.notEqual(bundle.source.sessionId, forward.source.sessionId);
+  assert.equal(bundle.history.rawRecords.length, 7);
+  assert.equal(await readFile(join(workspace, "source-fixture.json"), "utf8"), original);
+  const input = JSON.parse(await readFile(join(workspace, "destination-input.json"), "utf8")).stdin;
+  assert.match(input, /OpenCode intermediate decision/); assert.match(input, /Unicode regression/);
+  assert.match(input, /Fix parser|User request/i); assert.match(input, /historical/i); assert.match(input, /1 test failed/);
+  assert.equal(input.includes('"rawRecords"'), false);
+  const requests = (await readFile(join(workspace, "requests.jsonl"), "utf8")).trim().split(/\r?\n/).map(JSON.parse);
+  assert.ok(requests.every(x => x.method === "GET"));
+});

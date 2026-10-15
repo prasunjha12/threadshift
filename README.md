@@ -1,6 +1,6 @@
 # ThreadShift
 
-Move a paused Codex CLI task into a fresh OpenCode session while preserving its safe conversation history and current workspace evidence.
+Move a paused coding task between Codex CLI and OpenCode while preserving safe conversation history and current workspace evidence.
 
 This early source preview implements **Codex CLI → OpenCode, Smart mode**. A fresh Windows live handover completed without follow-up clarification after the privacy fixes. Native process completion and macOS/Linux validation remain release gates. See [validation evidence](docs/validation.md).
 
@@ -35,6 +35,19 @@ Review the package, then explicitly start OpenCode by rerunning the handoff with
 
 OpenCode receives **only `continuation.md` by default**. The complete archive stays local. Add `--attach-bundle` only after reviewing the archive if you want to include all retained history and patches.
 
+## Continue OpenCode work in Codex
+
+Pause OpenCode at a completed turn and use its explicit session ID:
+
+```sh
+node dist/cli.js handoff --from opencode --to codex --session SESSION_ID --workspace "/path/to/project" --output "/path/to/reverse-handoff" --dry-run --json
+node dist/cli.js handoff --from opencode --to codex --session SESSION_ID --workspace "/path/to/project" --output "/path/to/reverse-handoff" --launch
+```
+
+Codex receives the saved sanitized continuation through stdin, using `codex exec --json -`. It uses your normal configured authentication, model and approval rules. ThreadShift reports launch success only after a valid session identity, a completed turn and zero process exit. Incomplete OpenCode captures can be exported or prepared for review, but cannot launch automatically. Forked sessions remain incomplete until inherited history can be independently accounted for.
+
+OpenCode exports use bundle schema 2; existing schema-1 Codex bundles remain readable. Use `export --from opencode` to save a bundle and `import --to codex` to prepare it later. See [usage and manual retry](docs/usage.md).
+
 ## Privacy before handover
 
 Credential fields, labelled assignments, common token formats, authentication headers and credential-bearing URLs are redacted during capture, import and persistence. Common secret files are excluded from patches and hashing. Add project-specific confidential paths to `.threadshiftignore` in the workspace or repository root:
@@ -45,7 +58,7 @@ internal-notes.txt
 reports/**
 ```
 
-These rules also exclude matching historical file content and imported patches. Paths and change metadata may remain. Review the generated context before launch: arbitrary confidential prose, encoded secrets and unknown credential formats cannot be detected reliably. Native OpenCode can still read workspace files under its own permissions. See [privacy controls and limits](docs/privacy.md).
+These rules also exclude matching historical file content and imported patches. Paths and change metadata may remain. Review the generated context before launch: arbitrary confidential prose, encoded secrets and unknown credential formats cannot be detected reliably. The destination agent can still read workspace files under its own permissions. See [privacy controls and limits](docs/privacy.md).
 
 ## Save and reopen
 
