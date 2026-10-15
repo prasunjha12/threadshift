@@ -64,3 +64,23 @@ $text | & $r.launchInstructions.executable @($r.launchInstructions.args)
 ```
 
 The native source stores, auth, configuration and provider-private state stay local. The report contains the input recipe, not a duplicate transcript. Repeated handovers may quote earlier continuations as history; they do not merge or fabricate native source identities. Smart selection can omit older context with disclosed budget/omission counts; its historical test results are not current verification.
+
+## Pi sessions and six directions
+
+Use `codex`, `opencode`, or `pi` for `--from` and `--to`, choosing different agents for a handoff. `export --from pi` emits schema 3. Schemas 1 and 2 remain readable; import accepts every known source independently of the destination.
+
+Pi 1.0.2 stores format-3 JSONL. Choose an exact ID in the selected project's store, or a specific JSONL path. Pi's default agent directory is `~/.pi/agent`; `--pi-home` overrides it for source lookup. `PI_CODING_AGENT_SESSION_DIR` overrides the native store directory when set. The source header must match the selected workspace. A branched file requires explicit `--pi-leaf ENTRY_ID`, because navigation alone does not persist an active cursor. Capture reads the selected file twice and rejects observed changes. Keep the source paused; this is a stable observation, not an exclusive lock.
+
+Pi source reports include total/selected/excluded tree-entry counts. Each selected entry and the header appear once in canonical raw records. Unknown completion evidence is incomplete; pending requests/tools block capture. Parent-session paths are not followed. Pi custom IDs, including `CON`, remain native identities; default export filenames use the bundle ID for portability.
+
+Pi delivery uses a new persisted session and stdin, with no resume, fork, session selection, model, authentication or approval overrides. Review `report.json`'s executable, argument array, cwd, stdinFiles and stdinPreamble. To retry manually, concatenate the preamble and listed files in order and pipe them into that exact invocation from the recorded cwd. On PowerShell:
+
+```powershell
+$r = Get-Content -LiteralPath 'C:\handoff\report.json' -Raw | ConvertFrom-Json
+$i = $r.launchInstructions
+$text = $i.stdinPreamble + (($i.stdinFiles | ForEach-Object { Get-Content -LiteralPath $_ -Raw }) -join "`n`n")
+Push-Location -LiteralPath $i.cwd
+try { $text | & $i.executable @($i.args) } finally { Pop-Location }
+```
+
+`--launch` requires a complete source for every Pi-related route. Success requires a consistent session header, authoritative completed assistant and turn, no pending tools or unrecovered failure, final `agent_settled` and zero exit. ThreadShift invokes Pi once; Pi may perform its own automatic recovery, which is reported. Preparation files remain after failure. Native editing acceptance remains a separate check.

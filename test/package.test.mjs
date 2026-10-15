@@ -32,6 +32,8 @@ test("tarball installs offline and exposes the CLI without source or scratch dat
   const installedCli = join(consumer, "node_modules", "threadshift", "dist", "cli.js");
   const error = execFileSync(process.execPath, [installedCli, "--help"], { encoding: "utf8" });
   assert.match(error, /--launch/);
+  assert.match(error, /--pi-leaf/);
+  for (const name of ["capture", "deliver", "context", "format", "read", "normalize"]) assert.ok(names.includes(`dist/adapters/pi/${name}.js`));
   assert.match(error, /--from opencode --to codex/);
   assert.ok(names.includes("dist/adapters/codex/deliver.js"));
   assert.ok(names.includes("dist/adapters/opencode/capture.js"));

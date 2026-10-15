@@ -1,5 +1,130 @@
-import test from 'node:test';import assert from 'node:assert/strict';import{validBundle}from'./fixtures/bundle.mjs';import{validateBundle}from'../dist/core/validate.js';import{sanitizeBundle}from'../dist/core/privacy.js';
-function pi(){const b=validBundle();b.manifest.schemaVersion=3;b.source.harness='pi';b.source.sessionId='CON';b.source.selection={kind:'pi-branch',leafId:'a1',totalEntries:1,selectedEntries:1,excludedEntries:0};b.history.rawRecords.unshift({id:'header',sourceLocator:'pi/session/CON/header',value:{type:'session',version:3,id:'CON',cwd:b.source.workingDirectory}});b.history.rawRecords[1].sourceLocator='pi/session/CON/entry/a1';b.history.rawRecords[1].value={type:'message',id:'a1',parentId:null,message:{role:'assistant',content:[{type:'text',text:'Visible request'}],stopReason:'stop'}};b.manifest.counts.rawRecords=2;return b;}
-test('Pi schema counts reconcile and schema compatibility is strict',()=>{assert.equal(validateBundle(pi()).source.sessionId,'CON');for(const mutate of[b=>b.source.selection.selectedEntries=2,b=>b.source.selection.leafId='../x',b=>delete b.source.selection,b=>b.manifest.schemaVersion=2,b=>b.source.harness='unknown']){const b=pi();mutate(b);assert.throws(()=>validateBundle(b),{code:'INVALID_BUNDLE'});}for(const harness of['codex','opencode']){const b=validBundle();b.source.harness=harness;b.manifest.schemaVersion=3;validateBundle(b);}});
-test('Pi private blocks cannot leak through imported or linked copies',()=>{const b=pi();const marker='PRIVATE_PI_MARKER';b.history.rawRecords[1].value={type:'message',id:'a1',parentId:null,message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:'Visible request',textSignature:marker},{type:'thinking',thinking:marker,thinkingSignature:marker},{type:'image',data:marker,mimeType:'image/png'}]},custom:{type:'custom',data:{secret:marker}}};b.history.events[0].text=marker;b.handoff.objective.value=marker;b.warnings.push({code:'X',message:marker,eventIds:['event-1']});const safe=sanitizeBundle(b);assert.equal(JSON.stringify(safe).includes(marker),false);assert.deepEqual(sanitizeBundle(safe),safe);});
-test('visible Pi text survives signature removal and selection is whitelisted',()=>{const b=pi();b.history.events[0].text='Visible request';b.history.rawRecords[1].value={type:'message',id:'a1',parentId:null,message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:'Visible request',textSignature:'PRIVATE_SIGNATURE'}]}};b.source.selection.extra='DROP';const safe=sanitizeBundle(b);assert.equal(safe.history.events[0].text,'Visible request');assert.equal(safe.source.selection.extra,undefined);assert.equal(JSON.stringify(safe).includes('PRIVATE_SIGNATURE'),false);assert.deepEqual(sanitizeBundle(safe),safe);const other=pi();other.source.selection.excludedEntries=1;other.source.selection.totalEntries=2;assert.notEqual(safe.manifest.sourceDigest,sanitizeBundle(other).manifest.sourceDigest);});
+import test from "node:test";
+import assert from "node:assert/strict";
+import { validBundle } from "./fixtures/bundle.mjs";
+import { validateBundle } from "../dist/core/validate.js";
+import { sanitizeBundle } from "../dist/core/privacy.js";
+function pi() {
+  const b = validBundle();
+  b.manifest.schemaVersion = 3;
+  b.source.harness = "pi";
+  b.source.sessionId = "CON";
+  b.source.selection = {
+    kind: "pi-branch",
+    leafId: "a1",
+    totalEntries: 1,
+    selectedEntries: 1,
+    excludedEntries: 0,
+  };
+  b.history.rawRecords.unshift({
+    id: "header",
+    sourceLocator: "pi/session/CON/header",
+    value: {
+      type: "session",
+      version: 3,
+      id: "CON",
+      cwd: b.source.workingDirectory,
+    },
+  });
+  b.history.rawRecords[1].sourceLocator = "pi/session/CON/entry/a1";
+  b.history.rawRecords[1].value = {
+    type: "message",
+    id: "a1",
+    parentId: null,
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "Visible request" }],
+      stopReason: "stop",
+    },
+  };
+  b.manifest.counts.rawRecords = 2;
+  return b;
+}
+test("Pi schema counts reconcile and schema compatibility is strict", () => {
+  assert.equal(validateBundle(pi()).source.sessionId, "CON");
+  for (const mutate of [
+    (b) => (b.source.selection.selectedEntries = 2),
+    (b) => (b.source.selection.leafId = "../x"),
+    (b) => delete b.source.selection,
+    (b) => (b.manifest.schemaVersion = 2),
+    (b) => (b.source.harness = "unknown"),
+  ]) {
+    const b = pi();
+    mutate(b);
+    assert.throws(() => validateBundle(b), { code: "INVALID_BUNDLE" });
+  }
+  for (const harness of ["codex", "opencode"]) {
+    const b = validBundle();
+    b.source.harness = harness;
+    b.manifest.schemaVersion = 3;
+    validateBundle(b);
+  }
+});
+test("Pi private blocks cannot leak through imported or linked copies", () => {
+  const b = pi();
+  const marker = "PRIVATE_PI_MARKER";
+  b.history.rawRecords[1].value = {
+    type: "message",
+    id: "a1",
+    parentId: null,
+    message: {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        { type: "text", text: "Visible request", textSignature: marker },
+        { type: "thinking", thinking: marker, thinkingSignature: marker },
+        { type: "image", data: marker, mimeType: "image/png" },
+      ],
+    },
+    custom: { type: "custom", data: { secret: marker } },
+  };
+  b.history.events[0].text = marker;
+  b.handoff.objective.value = marker;
+  b.warnings.push({ code: "X", message: marker, eventIds: ["event-1"] });
+  const safe = sanitizeBundle(b);
+  assert.equal(JSON.stringify(safe).includes(marker), false);
+  assert.deepEqual(sanitizeBundle(safe), safe);
+});
+test("visible Pi text survives signature removal and selection is whitelisted", () => {
+  const b = pi();
+  b.history.events[0].text = "Visible request";
+  b.history.rawRecords[1].value = {
+    type: "message",
+    id: "a1",
+    parentId: null,
+    message: {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        {
+          type: "text",
+          text: "Visible request",
+          textSignature: "PRIVATE_SIGNATURE",
+        },
+      ],
+    },
+  };
+  b.source.selection.extra = "DROP";
+  const safe = sanitizeBundle(b);
+  assert.equal(safe.history.events[0].text, "Visible request");
+  assert.equal(safe.source.selection.extra, undefined);
+  assert.equal(JSON.stringify(safe).includes("PRIVATE_SIGNATURE"), false);
+  assert.deepEqual(sanitizeBundle(safe), safe);
+  const other = pi();
+  other.source.selection.excludedEntries = 1;
+  other.source.selection.totalEntries = 2;
+  assert.notEqual(
+    safe.manifest.sourceDigest,
+    sanitizeBundle(other).manifest.sourceDigest,
+  );
+});
+test("Pi confidential content remains excluded without destroying selected ancestry", () => {
+  const b = pi();
+  b.history.rawRecords[1].value.message.content = [
+    { type: "text", text: "read .env PRIVATE_FILE_MARKER" },
+  ];
+  b.history.events[0].text = "read .env PRIVATE_FILE_MARKER";
+  const safe = sanitizeBundle(b);
+  assert.equal(JSON.stringify(safe).includes("PRIVATE_FILE_MARKER"), false);
+  assert.equal(safe.history.rawRecords[1].value.parentId, null);
+  assert.deepEqual(sanitizeBundle(safe), safe);
+});

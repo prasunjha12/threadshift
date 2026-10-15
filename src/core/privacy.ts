@@ -1,3 +1,4 @@
+import { readPiCanonical } from "../adapters/pi/format.js";
 import { createHash } from "node:crypto";
 import type { CaptureResult, JsonValue, ThreadShiftBundle } from "./types.js";
 import { validateBundle } from "./validate.js";
@@ -29,7 +30,7 @@ export function sanitizeCapture(capture: CaptureResult): CaptureResult {
     handoff: { objective: null, latestRequest: null, currentState: null, completed: [], decisions: [], remaining: [], blockers: [], nextActions: [], importantFiles: [], verificationState: [], activePlan: [] },
     configuration: { references: [], compatibility: "not-translated" }, artifacts: { references: [] }, provenance: [], warnings: capture.warnings,
   });
-  return { ...capture, source: safe.source, events: safe.history.events, rawRecords: safe.history.rawRecords, warnings: safe.warnings, sourceDigest: safe.manifest.sourceDigest, exclusions: safe.manifest.exclusions };
+  return { ...capture, source: safe.source, completeness: safe.manifest.completeness, events: safe.history.events, rawRecords: safe.history.rawRecords, warnings: safe.warnings, sourceDigest: safe.manifest.sourceDigest, exclusions: safe.manifest.exclusions };
 }
 
 /** Schema projection and confidentiality processing are repeated at outbound boundaries. */
@@ -113,7 +114,15 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
     scrubReasoning(value);
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
       if (references(value, rules)) {
-        raw.value = { ...(typeof value.id === "string" ? { id: value.id } : {}), ...(typeof value.type === "string" ? { type: value.type } : {}), excluded: omitted };
+        if (bundle.source.harness === "pi") {
+          // Keep graph/control references while excluding conversation payloads.
+          const retained = pick(value, ["id", "type", "parentId", "timestamp", "version", "cwd", "firstKeptEntryId", "targetId", "tokensBefore"]);
+          if (value.type === "message" && value.message && typeof value.message === "object" && !Array.isArray(value.message)) retained.message = { ...pick(value.message, ["role", "stopReason", "toolCallId", "toolName", "timestamp"]), content: value.message.role === "assistant" ? [{ type: "text", text: omitted }] : omitted };
+          if (["compaction", "branch_summary"].includes(String(value.type))) retained.summary = omitted;
+          if (value.type === "context_edit") retained.replacement = value.replacement === null ? null : { content: omitted };
+          if (value.type === "custom_message") retained.content = omitted;
+          raw.value = { ...retained, excluded: omitted };
+        } else raw.value = { ...(typeof value.id === "string" ? { id: value.id } : {}), ...(typeof value.type === "string" ? { type: value.type } : {}), excluded: omitted };
         excludedRaw.add(raw.id);
       }
     } else if (references(value, rules)) { raw.value = omitted; excludedRaw.add(raw.id); }
@@ -161,7 +170,9 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
     return value;
   };
   const redacted = redactRecord(removeCopies(bundle as unknown as JsonValue));
-  const safe = validateBundle(redacted.value);
+  const candidate = redacted.value as unknown as ThreadShiftBundle;
+  if (candidate.source.harness === "pi" && readPiCanonical(candidate.history.rawRecords, candidate.source).completeness !== "complete") candidate.manifest.completeness = "incomplete";
+  const safe = validateBundle(candidate);
   for (const item of redacted.warnings) if (!safe.warnings.some((entry) => entry.code === item.code && entry.message === item.message)) safe.warnings.push(item);
   for (const item of [...safe.warnings, ...safe.git.warnings]) if (referencesPrivatePath(item.message, rules)) item.message = omitted;
   safe.manifest.sourceDigest = hash(safe.source.harness === "pi" ? { selection: safe.source.selection, rawRecords: safe.history.rawRecords } : safe.history.rawRecords);

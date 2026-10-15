@@ -27,3 +27,9 @@ Exports created by older builds are not modified retroactively. Re-import them t
 For OpenCode sources, recognized reasoning fields and provider-private state are excluded before canonical persistence, including linked event/provenance copies. Inline attachment bytes are excluded; safe reference metadata may remain and ThreadShift does not fetch remote attachments. Safe unknown raw metadata is retained, so novel private encodings remain a review responsibility. The private source helper's generated authentication value exists only in memory and its child environment; it is not provider authentication.
 
 Codex destination input is regenerated from persisted sanitized continuation files, sent through stdin rather than process arguments. The complete archive is sent only with `--attach-bundle`. Normal destination workspace access still applies independently of export filtering.
+
+## Pi archive and effective context
+
+Pi schema-3 bundles retain only selected branch ancestry. Smart context is rebuilt from sanitized canonical records at every compilation/persistence boundary, applying the latest retained context edits and compaction range. Edited/compacted originals remain in the local archive but do not reappear through cached request/state fields. Explicit unlinked user-supplied handoff fields remain attributed to the user.
+
+Known Pi thinking blocks/signatures, provider signatures/state, inline media bytes, opaque custom state and source system sections/tool declarations are excluded at the shared boundary, including linked copies. Safe visible text remains. Source system prompts do not become destination instructions. Unknown metadata and arbitrary prose still require review. `--attach-bundle` explicitly sends sanitized originals, including messages omitted or replaced in effective context; this is broader disclosure than the default continuation.

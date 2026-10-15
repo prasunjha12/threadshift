@@ -1,12 +1,12 @@
 # ThreadShift
 
-Move a paused coding task between Codex CLI and OpenCode while preserving safe conversation history and current workspace evidence.
+Move a paused coding task between Codex CLI, OpenCode and Pi while preserving safe conversation history and current workspace evidence.
 
-This early source preview implements **Codex CLI → OpenCode** and **OpenCode → Codex CLI**, using Smart context. Windows native delivery was verified in both directions; final reverse edits remain blocked by the tested Codex read-only environment. Native editing acceptance and macOS/Linux validation remain release gates. See [validation evidence](docs/validation.md).
+This early source preview implements **all six directions between Codex CLI, OpenCode and Pi**, using Smart context. Pi routing is fixture-verified and its native format/delivery protocol is pinned; real Pi model editing acceptance remains unverified. Windows native delivery was verified in both directions; final reverse edits remain blocked by the tested Codex read-only environment. Native editing acceptance and macOS/Linux validation remain release gates. See [validation evidence](docs/validation.md).
 
 ## Set up
 
-Use Node.js 24.12.0 through the Node 24 line, Git, Codex CLI **0.162.1**, and OpenCode **2.0.22** (`@opencode/cli`). Other harness versions fail until their contracts are verified.
+Use Node.js 24.12.0 through the Node 24 line, Git, Codex CLI **0.162.1**, OpenCode **2.0.22** (`@opencode/cli`), and Pi **1.0.2** (`@earendil-works/pi-coding-agent`). Other harness versions fail until their contracts are verified.
 
 ```sh
 npm ci
@@ -94,3 +94,18 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development checks and the current sc
 ## License
 
 [MIT](LICENSE). The package remains marked private to prevent accidental npm publication; the source is available on GitHub.
+
+## Hand over to or from Pi
+
+Every ordered pair of different agents is supported: Codex ↔ OpenCode, Codex ↔ Pi, and OpenCode ↔ Pi. Use `--to pi` for a fresh persisted Pi session; it receives the saved continuation through stdin with `pi --mode json`.
+
+```sh
+node dist/cli.js handoff --from codex --to pi --session CODEX_ID --workspace "/path/to/project" --output "/path/to/package"
+node dist/cli.js handoff --from opencode --to pi --session OPENCODE_ID --workspace "/path/to/project" --output "/path/to/package"
+node dist/cli.js handoff --from pi --to codex --session "/path/to/session.jsonl" --pi-leaf ENTRY_ID --workspace "/path/to/project" --output "/path/to/package"
+node dist/cli.js handoff --from pi --to opencode --session PI_EXACT_ID --pi-home "/path/to/pi/agent" --pi-leaf ENTRY_ID --workspace "/path/to/project" --output "/path/to/package"
+```
+
+Pi selection accepts an exact project session ID or a JSONL file. Branched sessions require `--pi-leaf`; use the native entry ID on the intended branch. No latest-session or prefix selection occurs. `--pi-home` selects an existing source agent directory; `--pi-bin` overrides the executable for a Pi source or destination. Imported bundles need no source installation.
+
+Pi format-3 archives use ThreadShift schema 3 and preserve only selected ancestry, with branch counts in the report. Smart context applies native edits and compaction; archived originals remain available for audit. Review the full archive before opting into `--attach-bundle`, which includes originals no longer present in effective context. Parent-session files and sibling branches are excluded. Incomplete new routes may prepare for review, but cannot launch automatically. Pi uses normal model, authentication and approval settings. A settled response and process exit confirm delivery; intended edits and tests require separate verification.

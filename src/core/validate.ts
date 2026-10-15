@@ -138,7 +138,10 @@ export function validateBundle(input: unknown): ThreadShiftBundle {
     assertSafeIdentifier(source.sessionId as string, "source.sessionId");
     if (source.selection !== undefined) throw new ThreadShiftError("Selection metadata requires a Pi source", "INVALID_BUNDLE");
   }
-  if (source.harness === "pi") readPiCanonical(rawRecords, source as unknown as ThreadShiftBundle["source"]);
+  if (source.harness === "pi") {
+    const selected = readPiCanonical(rawRecords, source as unknown as ThreadShiftBundle["source"]);
+    if (manifest.completeness === "complete" && selected.completeness !== "complete") throw new ThreadShiftError("Pi complete capture lacks verified terminal/inherited coverage", "INVALID_BUNDLE");
+  }
   const workspace = record(bundle.workspace, "workspace");
   for (const key of ["root", "inspectedAt", "digest"]) string(workspace[key], `workspace.${key}`);
   for (const key of ["instructionReferences", "artifactReferences"]) stringArray(workspace[key], `workspace.${key}`);

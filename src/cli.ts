@@ -18,6 +18,12 @@ import { inspectWorkspace } from "./workspace/inspect.js";
 import { prepareCodex, launchCodex } from "./adapters/codex/deliver.js";
 import { prepareOpenCode, launchOpenCode, updateReport } from "./adapters/opencode/deliver.js";
 
+import { preparePi, launchPi } from "./adapters/pi/deliver.js";
+
+const preparers = { codex: prepareCodex, opencode: prepareOpenCode, pi: preparePi };
+const launchers = { codex: launchCodex, opencode: launchOpenCode, pi: launchPi };
+const harnesses = ["codex", "opencode", "pi"];
+
 interface Options {
   command: "handoff" | "export" | "import";
   from?: string;
@@ -31,6 +37,9 @@ interface Options {
   handoffFile?: string;
   codexBin?: string;
   opencodeBin?: string;
+  piBin?: string;
+  piHome?: string;
+  piLeaf?: string;
   codexHome?: string;
   dryRun: boolean;
   launch: boolean;
@@ -45,8 +54,10 @@ const help = `ThreadShift — portable coding-agent handoffs
 Usage:
   threadshift handoff --from codex --to opencode --session <id> [options]
   threadshift handoff --from opencode --to codex --session <id> [options]
-  threadshift export --from codex|opencode --session <id> [options]
-  threadshift import --bundle <file> --to codex|opencode [options]
+  threadshift handoff --from pi --to codex|opencode --session <id|file> [options]
+  threadshift handoff --from codex|opencode --to pi --session <id> [options]
+  threadshift export --from codex|opencode|pi --session <id> [options]
+  threadshift import --bundle <file> --to codex|opencode|pi [options]
 
 Options:
   --workspace <dir>                 Workspace to inspect or continue in
@@ -56,6 +67,9 @@ Options:
   --handoff-file <json>             Supply explicitly attributed handoff fields
   --codex-bin <path>                Codex executable override
   --opencode-bin <path>             OpenCode executable override
+  --pi-bin <path>                   Pi executable override
+  --pi-home <dir>                   Pi source agent directory (not destination config)
+  --pi-leaf <id>                    Explicit Pi source branch entry
   --codex-home <dir>                Codex home for source access
   --dry-run                         Inspect and report without writing files
   --launch                          Explicitly start a fresh destination run
@@ -70,7 +84,7 @@ The source session ID is required. Capture is read-only; historical commands are
 
 const valueFlags = new Set([
   "--from", "--to", "--session", "--bundle", "--output", "--workspace", "--mode", "--context-chars",
-  "--handoff-file", "--codex-bin", "--opencode-bin", "--codex-home",
+  "--handoff-file", "--codex-bin", "--opencode-bin", "--codex-home", "--pi-bin", "--pi-home", "--pi-leaf",
 ]);
 const booleanFlags = new Set(["--dry-run", "--launch", "--json", "--overwrite", "--accept-workspace-mismatch", "--attach-bundle"]);
 
@@ -118,26 +132,31 @@ function parseArgs(argv: string[]): Options | { help: true } {
     ...(values.has("--handoff-file") ? { handoffFile: values.get("--handoff-file")! } : {}),
     ...(values.has("--codex-bin") ? { codexBin: values.get("--codex-bin")! } : {}),
     ...(values.has("--opencode-bin") ? { opencodeBin: values.get("--opencode-bin")! } : {}),
+    ...(values.has("--pi-bin") ? { piBin: values.get("--pi-bin")! } : {}),
+    ...(values.has("--pi-home") ? { piHome: values.get("--pi-home")! } : {}),
+    ...(values.has("--pi-leaf") ? { piLeaf: values.get("--pi-leaf")! } : {}),
     ...(values.has("--codex-home") ? { codexHome: values.get("--codex-home")! } : {}),
   };
   if (options.dryRun && options.launch) throw new ThreadShiftError("--dry-run and --launch cannot be used together.", "INVALID_ARGUMENT");
   if (command === "handoff" || command === "export") {
-    if (options.from !== "codex" && options.from !== "opencode") throw new ThreadShiftError(`--from codex|opencode is required for ${command}.`, "INVALID_ARGUMENT");
+    if (!harnesses.includes(options.from ?? "")) throw new ThreadShiftError(`--from codex|opencode|pi is required for ${command}.`, "INVALID_ARGUMENT");
     if (!options.session) throw new ThreadShiftError("--session <id> is required; session selection is explicit in this slice.", "INVALID_ARGUMENT");
   }
-  if (command === "handoff" && !((options.from === "codex" && options.to === "opencode") || (options.from === "opencode" && options.to === "codex"))) throw new ThreadShiftError("Supported handoffs are codex to opencode and opencode to codex.", "INVALID_ARGUMENT");
+  if (command === "handoff" && (!harnesses.includes(options.to ?? "") || options.from === options.to)) throw new ThreadShiftError("Choose two different agents: codex, opencode, or pi.", "INVALID_ARGUMENT");
   if (command === "import") {
     if (!options.bundle) throw new ThreadShiftError("--bundle <file> is required for import.", "INVALID_ARGUMENT");
-    if (options.to !== "opencode" && options.to !== "codex") throw new ThreadShiftError("--to codex|opencode is required for import.", "INVALID_ARGUMENT");
+    if (!harnesses.includes(options.to ?? "")) throw new ThreadShiftError("--to codex|opencode|pi is required for import.", "INVALID_ARGUMENT");
   }
   if (command === "export" && options.launch) throw new ThreadShiftError("--launch is only supported by handoff or import.", "INVALID_ARGUMENT");
   if (command === "export" && options.to) throw new ThreadShiftError("export writes a canonical bundle and does not take --to.", "INVALID_ARGUMENT");
   if (command === "export" && options.attachBundle) throw new ThreadShiftError("--attach-bundle is only supported by handoff or import.", "INVALID_ARGUMENT");
   if (command !== "import" && options.acceptWorkspaceMismatch) throw new ThreadShiftError("--accept-workspace-mismatch is only supported by import.", "INVALID_ARGUMENT");
-  if (command === "import" && (options.codexHome || options.session || options.from)) throw new ThreadShiftError("Codex source flags cannot be used while importing a saved bundle.", "INVALID_ARGUMENT");
+  if (command === "import" && (options.codexHome || options.piHome || options.piLeaf || options.session || options.from)) throw new ThreadShiftError("Codex source flags cannot be used while importing a saved bundle.", "INVALID_ARGUMENT");
   if (options.codexHome && options.from !== "codex") throw new ThreadShiftError("--codex-home requires a Codex source.", "INVALID_ARGUMENT");
   if (options.codexBin && options.from !== "codex" && options.to !== "codex") throw new ThreadShiftError("--codex-bin requires a Codex source or destination.", "INVALID_ARGUMENT");
   if (options.opencodeBin && options.from !== "opencode" && options.to !== "opencode") throw new ThreadShiftError("--opencode-bin requires an OpenCode source or destination.", "INVALID_ARGUMENT");
+  if ((options.piHome || options.piLeaf) && options.from !== "pi") throw new ThreadShiftError("--pi-home and --pi-leaf require a Pi source.", "INVALID_ARGUMENT");
+  if (options.piBin && options.from !== "pi" && options.to !== "pi") throw new ThreadShiftError("--pi-bin requires a Pi source or destination.", "INVALID_ARGUMENT");
   return options;
 }
 
@@ -183,7 +202,7 @@ function reportOutput(options: Options, report: ConversionReport): void {
 async function outputPath(options: Options, bundle: ThreadShiftBundle): Promise<string> {
   if (options.output) return resolve(options.output);
   const base = join(homedir(), ".threadshift", options.command === "export" ? "exports" : "handoffs");
-  const output = join(base, options.command === "export" ? `${bundle.source.sessionId}.threadshift.json` : bundle.manifest.bundleId);
+  const output = join(base, options.command === "export" ? `${bundle.source.harness === "pi" ? bundle.manifest.bundleId : bundle.source.sessionId}.threadshift.json` : bundle.manifest.bundleId);
   await assertDefaultOutputContained(base, output);
   return output;
 }
@@ -191,7 +210,7 @@ async function outputPath(options: Options, bundle: ThreadShiftBundle): Promise<
 async function executeExport(options: Options, signal: AbortSignal): Promise<number> {
   const workspaceRoot = resolve(options.workspace ?? process.cwd());
   const handoffFields = await readHandoffFields(options.handoffFile);
-  const { bundle } = await captureBundle({ from: options.from as Harness, ...(options.opencodeBin ? { opencodeBin: options.opencodeBin } : {}), sessionId: options.session!, workspaceRoot, ...(options.codexBin ? { codexBin: options.codexBin } : {}), ...(options.codexHome ? { codexHome: options.codexHome } : {}), handoffFields }, signal);
+  const { bundle } = await captureBundle({ from: options.from as Harness, ...(options.piBin ? { piBin: options.piBin } : {}), ...(options.piHome ? { piHome: options.piHome } : {}), ...(options.piLeaf ? { piLeaf: options.piLeaf } : {}), ...(options.opencodeBin ? { opencodeBin: options.opencodeBin } : {}), sessionId: options.session!, workspaceRoot, ...(options.codexBin ? { codexBin: options.codexBin } : {}), ...(options.codexHome ? { codexHome: options.codexHome } : {}), handoffFields }, signal);
   const output = await outputPath(options, bundle);
   const summary = { status: options.dryRun ? "dry-run" : "exported", bundleId: bundle.manifest.bundleId, path: output, completeness: bundle.manifest.completeness, counts: bundle.manifest.counts, warnings: bundle.warnings };
   if (!options.dryRun) await writeBundle(output, bundle, { overwrite: options.overwrite });
@@ -203,9 +222,9 @@ async function executeExport(options: Options, signal: AbortSignal): Promise<num
 async function executeHandoff(options: Options, signal: AbortSignal): Promise<number> {
   const workspaceRoot = resolve(options.workspace ?? process.cwd());
   const handoffFields = await readHandoffFields(options.handoffFile);
-  const { bundle, workspace } = await captureBundle({ from: options.from as Harness, ...(options.opencodeBin ? { opencodeBin: options.opencodeBin } : {}), sessionId: options.session!, workspaceRoot, ...(options.codexBin ? { codexBin: options.codexBin } : {}), ...(options.codexHome ? { codexHome: options.codexHome } : {}), handoffFields }, signal);
-  const destination = await destinationVersion(options.to as Harness, options.to === "codex" ? options.codexBin : options.opencodeBin);
-  if (options.launch && options.to === "codex" && bundle.manifest.completeness !== "complete") throw new ThreadShiftError("Automatic Codex launch requires a complete paused source; prepare or export it for review instead.", "SOURCE_INCOMPLETE");
+  const { bundle, workspace } = await captureBundle({ from: options.from as Harness, ...(options.piBin ? { piBin: options.piBin } : {}), ...(options.piHome ? { piHome: options.piHome } : {}), ...(options.piLeaf ? { piLeaf: options.piLeaf } : {}), ...(options.opencodeBin ? { opencodeBin: options.opencodeBin } : {}), sessionId: options.session!, workspaceRoot, ...(options.codexBin ? { codexBin: options.codexBin } : {}), ...(options.codexHome ? { codexHome: options.codexHome } : {}), handoffFields }, signal);
+  const destination = await destinationVersion(options.to as Harness, options.to === "codex" ? options.codexBin : options.to === "pi" ? options.piBin : options.opencodeBin);
+  if (options.launch && (options.to === "codex" || options.to === "pi" || bundle.source.harness === "pi") && bundle.manifest.completeness !== "complete") throw new ThreadShiftError("Automatic destination launch requires a complete paused source; prepare or export it for review instead.", "SOURCE_INCOMPLETE");
   const context = compileSmart(bundle, { maxCharacters: options.contextCharacters });
   const output = await outputPath(options, bundle);
   await assertSafePackageOutput(output, [workspace.root]);
@@ -217,7 +236,7 @@ async function executeHandoff(options: Options, signal: AbortSignal): Promise<nu
     reportOutput(options, report);
     return 0;
   }
-  const prepared = await (options.to === "codex" ? prepareCodex : prepareOpenCode)(output, bundle, context, report, destination.descriptor, { overwrite: options.overwrite, attachBundle: options.attachBundle });
+  const prepared = await preparers[options.to as Harness](output, bundle, context, report, destination.descriptor, { overwrite: options.overwrite, attachBundle: options.attachBundle });
   if (options.launch) {
     const current = await inspectWorkspace(prepared.workspaceRoot);
     const comparisonWarnings = compareWorkspace(
@@ -225,7 +244,7 @@ async function executeHandoff(options: Options, signal: AbortSignal): Promise<nu
       excludeGeneratedOutput(current, output),
       options.acceptWorkspaceMismatch,
     );
-    const delivery = await (options.to === "codex" ? launchCodex : launchOpenCode)(prepared.launch, signal);
+    const delivery = await launchers[options.to as Harness](prepared.launch, signal);
     report.warnings.push(...comparisonWarnings, ...delivery.warnings);
     report.launch = { status: delivery.status, exitCode: delivery.exitCode, ...(delivery.sessionId ? { sessionId: delivery.sessionId } : {}) };
     if (delivery.status === "failed") {
@@ -259,10 +278,10 @@ async function executeImport(options: Options, signal: AbortSignal): Promise<num
     ? safeOriginal
     : (() => {
       const sanitized = sanitizeHandoffFields(handoffFields);
-      return sanitizeBundle({ ...safeOriginal, warnings: [...safeOriginal.warnings, ...sanitized.warnings], handoff: deriveHandoff({ events: safeOriginal.history.events }, currentWorkspace, sanitized.fields) }, privacyRules);
+      return sanitizeBundle({ ...safeOriginal, warnings: [...safeOriginal.warnings, ...sanitized.warnings], handoff: deriveHandoff({ events: safeOriginal.history.events, rawRecords: safeOriginal.history.rawRecords, source: safeOriginal.source }, currentWorkspace, sanitized.fields) }, privacyRules);
     })();
-  const destination = await destinationVersion(options.to as Harness, options.to === "codex" ? options.codexBin : options.opencodeBin);
-  if (options.launch && options.to === "codex" && bundle.manifest.completeness !== "complete") throw new ThreadShiftError("Automatic Codex launch requires a complete paused source; prepare or export it for review instead.", "SOURCE_INCOMPLETE");
+  const destination = await destinationVersion(options.to as Harness, options.to === "codex" ? options.codexBin : options.to === "pi" ? options.piBin : options.opencodeBin);
+  if (options.launch && (options.to === "codex" || options.to === "pi" || bundle.source.harness === "pi") && bundle.manifest.completeness !== "complete") throw new ThreadShiftError("Automatic destination launch requires a complete paused source; prepare or export it for review instead.", "SOURCE_INCOMPLETE");
   const context = compileSmart(bundle, { maxCharacters: options.contextCharacters });
   const output = await outputPath(options, bundle);
   await assertSafePackageOutput(output, [currentWorkspace.root, resolve(options.bundle!)]);
@@ -274,7 +293,7 @@ async function executeImport(options: Options, signal: AbortSignal): Promise<num
     reportOutput(options, report);
     return 0;
   }
-  const prepared = await (options.to === "codex" ? prepareCodex : prepareOpenCode)(output, bundle, context, report, destination.descriptor, { overwrite: options.overwrite, workspaceRoot: currentWorkspace.root, protectedPaths: [resolve(options.bundle!)], attachBundle: options.attachBundle });
+  const prepared = await preparers[options.to as Harness](output, bundle, context, report, destination.descriptor, { overwrite: options.overwrite, workspaceRoot: currentWorkspace.root, protectedPaths: [resolve(options.bundle!)], attachBundle: options.attachBundle });
   if (options.launch) {
     const latestWorkspace = await inspectWorkspace(currentWorkspace.root);
     const capturedWorkspace = { ...originalBundle.workspace, git: originalBundle.git, warnings: [] };
@@ -283,7 +302,7 @@ async function executeImport(options: Options, signal: AbortSignal): Promise<num
       excludeGeneratedOutput(latestWorkspace, output),
       options.acceptWorkspaceMismatch,
     );
-    const delivery = await (options.to === "codex" ? launchCodex : launchOpenCode)(prepared.launch, signal);
+    const delivery = await launchers[options.to as Harness](prepared.launch, signal);
     report.warnings.push(...latestWarnings, ...delivery.warnings);
     report.launch = { status: delivery.status, exitCode: delivery.exitCode, ...(delivery.sessionId ? { sessionId: delivery.sessionId } : {}) };
     if (delivery.status === "failed") {
