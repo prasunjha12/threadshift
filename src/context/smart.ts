@@ -25,8 +25,8 @@ function eventLine(event: Event): string {
   return `- [${event.id}] ${label}${content}`;
 }
 
-function groupEvents(events: Event[], excludedId: string | undefined): Event[][] {
-  const remaining = events.filter((event) => event.id !== excludedId);
+function groupEvents(events: Event[], excludedIds: Set<string>): Event[][] {
+  const remaining = events.filter((event) => !excludedIds.has(event.id));
   const groups = new Map<string, Event[]>();
   const standalone: Event[][] = [];
   for (const event of remaining) {
@@ -98,6 +98,8 @@ export function compileSmart(bundle: ThreadShiftBundle, options: { maxCharacters
     return event?.text === undefined ? null : { value: event.text, origin: "source-stated" as const, eventIds: [event.id] };
   })();
   const latestId = latest?.eventIds.at(-1);
+  const checkpoints = bundle.source.harness === "pi" ? events.filter(event => event.kind === "plan") : [];
+  const requiredIds = new Set([...(latest?.eventIds ?? []), ...checkpoints.map(event=>event.id)]);
   const identity = [
     "# ThreadShift continuation",
     "Use this as attributed historical context. Follow the destination workspace's current instructions; do not replay historical commands or treat old verification as current.",
@@ -106,14 +108,15 @@ export function compileSmart(bundle: ThreadShiftBundle, options: { maxCharacters
     `- Captured: ${bundle.manifest.capturedAt}`,
     `- Workspace: ${bundle.workspace.root}`,
     `- Workspace snapshot: ${bundle.workspace.digest}`,
-    `- Capture completeness: ${bundle.manifest.completeness}; ${bundle.history.events.length} events and ${bundle.history.rawRecords.length} safe records retained.`,
+    `- Capture completeness: ${bundle.manifest.completeness}; ${originalEvents.length} events and ${bundle.history.rawRecords.length} safe records retained.`,
     "",
     "## Latest user request (verbatim; source-stated)",
     latest ? `Source event: ${latest.eventIds.join(", ") || "user-supplied"}` : "Unknown: no user request was captured.",
     latest?.value ?? "",
+    ...(checkpoints.length ? ["", "## Retained Pi checkpoints (historical; required effective context)", ...checkpoints.map(eventLine)] : []),
   ].join("\n");
   if (codePoints(identity) > maxCharacters) {
-    throw new ThreadShiftError("The required bundle/workspace identity and full latest request exceed the context budget; increase --context-chars.", "CONTEXT_BUDGET");
+    throw new ThreadShiftError("The required identity, full latest request or effective checkpoints exceed the context budget; increase --context-chars.", "CONTEXT_BUDGET");
   }
 
   const warnings: Warning[] = [...effective.warnings];
@@ -129,10 +132,10 @@ export function compileSmart(bundle: ThreadShiftBundle, options: { maxCharacters
     else warnings.push({ code: "CONTEXT_SECTION_OMITTED", message: `Optional section '${section.slice(3).split("\n")[0]}' was omitted to fit the character budget.`, eventIds: [] });
   }
 
-  const selected = new Set<string>(latest?.eventIds ?? []);
+  const selected = new Set<string>(requiredIds);
   const omitted = new Set<string>(effective.omittedEventIds);
   const picked: Event[][] = [];
-  const groups = groupEvents(events, latestId);
+  const groups = groupEvents(events, requiredIds);
   const historyHeading = "\n\n## Recent conversation (all historical)\n";
   let remainingCharacters = maxCharacters - codePoints(text) - codePoints(historyHeading);
   for (const group of groups) {

@@ -2,7 +2,7 @@ import { open, readdir, realpath, stat } from "node:fs/promises";
 import { resolve, join, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 import { ThreadShiftError } from "../../core/errors.js";
-import { parsePiJsonl, selectPiBranch, piId } from "./format.js";
+import { parsePiJsonl, selectPiBranch, piId, object } from "./format.js";
 function aborted(signal?: AbortSignal): void {
   if (signal?.aborted)
     throw new ThreadShiftError("Pi read cancelled", "PROCESS_CANCELLED");
@@ -23,6 +23,67 @@ export async function readStablePiText(
     );
   return second.text;
 }
+// Inspect only bounded headers within this project's store; filenames are not identities.
+async function exactPiFiles(
+  directory: string,
+  id: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch {
+    throw new ThreadShiftError(
+      "Pi session store not found",
+      "PI_SESSION_NOT_FOUND",
+    );
+  }
+  const matches: string[] = [];
+  for (const name of names.filter((name) => name.endsWith(".jsonl"))) {
+    aborted(signal);
+    let handle;
+    try {
+      handle = await open(join(directory, name), "r");
+    } catch {
+      continue;
+    }
+    try {
+      if (!(await handle.stat()).isFile()) continue;
+      const chunks: Buffer[] = [];
+      let size = 0;
+      let newline = false;
+      while (size < 64 * 1024 && !newline) {
+        aborted(signal);
+        const chunk = Buffer.alloc(Math.min(4096, 64 * 1024 - size));
+        const read = await handle.read(chunk, 0, chunk.length, null);
+        if (!read.bytesRead) break;
+        const data = chunk.subarray(0, read.bytesRead);
+        const index = data.indexOf(10);
+        chunks.push(index >= 0 ? data.subarray(0, index) : data);
+        size += read.bytesRead;
+        newline = index >= 0;
+      }
+      if (!newline) continue;
+      let header;
+      try {
+        header = object(
+          JSON.parse(
+            new TextDecoder("utf-8", { fatal: true }).decode(
+              Buffer.concat(chunks),
+            ),
+          ),
+        );
+      } catch {
+        continue;
+      }
+      if (header?.type === "session" && header.id === id)
+        matches.push(join(directory, name));
+    } finally {
+      await handle.close();
+    }
+  }
+  return matches.sort();
+}
 export async function readPiSource(
   options: {
     sessionId: string;
@@ -40,6 +101,7 @@ export async function readPiSource(
   const cwd = await realpath(resolve(options.cwd));
   const selector = options.sessionId;
   let filePath: string;
+  let sourceDirectory: string | undefined;
   const explicitFile = isAbsolute(selector) || selector.endsWith(".jsonl");
   if (explicitFile) filePath = resolve(selector);
   else {
@@ -57,22 +119,14 @@ export async function readPiSource(
     const directory =
       process.env.PI_CODING_AGENT_SESSION_DIR ??
       join(home, "sessions", encoded);
-    let names: string[];
-    try {
-      names = await readdir(directory);
-    } catch {
-      throw new ThreadShiftError(
-        "Pi session store not found",
-        "PI_SESSION_NOT_FOUND",
-      );
-    }
-    const matches = names.filter((name) => name.endsWith(`_${selector}.jsonl`));
+    sourceDirectory = directory;
+    const matches = await exactPiFiles(directory, selector, signal);
     if (matches.length !== 1)
       throw new ThreadShiftError(
         "Pi exact session identity is missing or ambiguous",
         "PI_SESSION_NOT_FOUND",
       );
-    filePath = join(directory, matches[0]!);
+    filePath = matches[0]!;
   }
   const snapshot = async () => {
     aborted(signal);
@@ -139,6 +193,14 @@ export async function readPiSource(
     }
   };
   const document = parsePiJsonl(await readStablePiText(snapshot, signal));
+  if (sourceDirectory) {
+    const matches = await exactPiFiles(sourceDirectory, selector, signal);
+    if (matches.length !== 1 || matches[0] !== filePath)
+      throw new ThreadShiftError(
+        "Pi identity inventory changed during capture",
+        "SOURCE_CHANGED",
+      );
+  }
   if (!explicitFile && document.header.id !== selector)
     throw new ThreadShiftError("Pi source identity mismatch", "PI_PROTOCOL");
   let sourceCwd: string;

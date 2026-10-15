@@ -96,6 +96,12 @@ export async function launchPi(
       retrying = false,
       recovered = false;
     let finalMessage: string | undefined;
+    let messageRole: string | undefined;
+    let compactionReason: string | undefined;
+    let compactionPriorCompleted = false;
+    let compactionPriorEnded = false;
+    let compactionFailed = false;
+    let recoveryReady = false;
     const pending = new Set<string>();
     for (const line of result.stdout
       .split("\n")
@@ -115,7 +121,7 @@ export async function launchPi(
       }
       if (!identity) return failed();
       if (e.type === "agent_start") {
-        if (activeTurn) return failed();
+        if (activeTurn || messageRole || compactionReason) return failed();
         agent = true;
         agentEnded = false;
         settled = false;
@@ -123,20 +129,37 @@ export async function launchPi(
         finalMessage = undefined;
       }
       if (e.type === "turn_start") {
-        if (!agent || activeTurn) return failed();
+        if (!agent || activeTurn || messageRole || compactionReason)
+          return failed();
         activeTurn = true;
         completed = false;
         settled = false;
         finalMessage = undefined;
       }
       if (e.type === "message_start") {
+        const m = object(e.message);
+        if (!activeTurn || messageRole || !m || typeof m.role !== "string")
+          return failed();
+        messageRole = m.role;
         settled = false;
+        completed = false;
+        agentEnded = false;
         finalMessage = undefined;
       }
+      if (e.type === "message_update" && (!activeTurn || !messageRole))
+        return failed();
       if (e.type === "message_end") {
         settled = false;
         const m = object(e.message);
-        if (!m || typeof m.role !== "string") return failed();
+        if (
+          !activeTurn ||
+          !m ||
+          typeof m.role !== "string" ||
+          (messageRole && messageRole !== m.role)
+        )
+          return failed();
+        messageRole = undefined;
+        finalMessage = undefined;
         if (m.role === "assistant") {
           if (!activeTurn || !Array.isArray(m.content)) return failed();
           for (const part of m.content) {
@@ -167,7 +190,7 @@ export async function launchPi(
         settled = false;
       }
       if (e.type === "turn_end") {
-        if (!activeTurn) return failed();
+        if (!activeTurn || messageRole || compactionReason) return failed();
         activeTurn = false;
         const m = object(e.message);
         completed =
@@ -177,9 +200,14 @@ export async function launchPi(
           m.stopReason === "stop" &&
           JSON.stringify(m) === finalMessage &&
           pending.size === 0;
+        if (completed && recoveryReady) {
+          unrecovered = false;
+          recovered = true;
+          recoveryReady = false;
+        }
       }
       if (e.type === "agent_end") {
-        if (activeTurn) return failed();
+        if (activeTurn || messageRole || compactionReason) return failed();
         agentEnded = true;
         agent = false;
         settled = false;
@@ -190,19 +218,73 @@ export async function launchPi(
         completed = false;
       }
       if (e.type === "auto_retry_start") {
+        if (retrying || activeTurn || messageRole || compactionReason)
+          return failed();
         retrying = true;
         settled = false;
         completed = false;
         finalMessage = undefined;
       }
       if (e.type === "auto_retry_end") {
+        if (!retrying) return failed();
         retrying = false;
         if (e.success === true) {
-          unrecovered = false;
-          recovered = true;
+          recoveryReady = true;
+          if (completed && finalMessage) {
+            unrecovered = false;
+            recovered = true;
+            recoveryReady = false;
+          }
         } else {
           unrecovered = true;
           settled = false;
+        }
+      }
+      if (e.type === "compaction_start") {
+        if (
+          compactionReason ||
+          activeTurn ||
+          messageRole ||
+          !["overflow", "threshold", "manual"].includes(String(e.reason))
+        )
+          return failed();
+        compactionReason = String(e.reason);
+        compactionPriorCompleted = completed;
+        compactionPriorEnded = agentEnded;
+        completed = false;
+        settled = false;
+      }
+      if (e.type === "compaction_end") {
+        if (!compactionReason || e.reason !== compactionReason) return failed();
+        const reason = compactionReason;
+        compactionReason = undefined;
+        settled = false;
+        const result = object(e.result);
+        const succeeded =
+          e.aborted === false &&
+          !e.errorMessage &&
+          !!result &&
+          typeof result.summary === "string" &&
+          (typeof result.firstKeptEntryId === "string" ||
+            result.firstKeptEntryId === null) &&
+          typeof result.tokensBefore === "number" &&
+          Number.isFinite(result.tokensBefore);
+        if (!succeeded) {
+          compactionFailed = true;
+          unrecovered = true;
+          completed = false;
+        } else {
+          compactionFailed = false;
+          if (e.willRetry === true) {
+            if (reason !== "overflow") return failed();
+            recoveryReady = true;
+            completed = false;
+            agentEnded = false;
+            finalMessage = undefined;
+          } else if (e.willRetry === false) {
+            completed = compactionPriorCompleted;
+            agentEnded = compactionPriorEnded;
+          } else return failed();
         }
       }
       if (e.type === "agent_settled") {
@@ -212,7 +294,11 @@ export async function launchPi(
           !completed ||
           pending.size ||
           unrecovered ||
-          retrying
+          retrying ||
+          messageRole ||
+          compactionReason ||
+          compactionFailed ||
+          recoveryReady
         )
           return failed();
         settled = true;
@@ -226,7 +312,11 @@ export async function launchPi(
       agent ||
       pending.size ||
       unrecovered ||
-      retrying
+      retrying ||
+      messageRole ||
+      compactionReason ||
+      compactionFailed ||
+      recoveryReady
     )
       return failed();
     return {

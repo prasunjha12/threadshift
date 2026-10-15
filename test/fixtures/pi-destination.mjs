@@ -59,6 +59,49 @@ if (mode === "unicode") {
   events[3].message.content[0].text = "雪\u2028\u2029";
   events[4].message.content[0].text = "雪\u2028\u2029";
 }
+
+if (mode === "late-compaction")
+  events.push({ type: "compaction_start", reason: "threshold" });
+if (mode === "late-message")
+  events.push(
+    { type: "message_start", message: { role: "user", content: "new" } },
+    { type: "agent_settled" },
+  );
+if (mode === "failed-compaction")
+  events.splice(
+    events.length - 1,
+    0,
+    { type: "compaction_start", reason: "threshold" },
+    {
+      type: "compaction_end",
+      reason: "threshold",
+      aborted: true,
+      willRetry: false,
+    },
+  );
+if (mode === "overflow-recovery") {
+  const bad = { role: "assistant", content: [], stopReason: "error" };
+  events = [
+    ...events.slice(0, 3),
+    { type: "message_end", message: bad },
+    { type: "turn_end", message: bad },
+    { type: "agent_end" },
+    { type: "compaction_start", reason: "overflow" },
+    {
+      type: "compaction_end",
+      reason: "overflow",
+      result: {
+        summary: "checkpoint",
+        firstKeptEntryId: "a1",
+        tokensBefore: 100,
+      },
+      aborted: false,
+      willRetry: true,
+    },
+    ...events.slice(1),
+  ];
+}
+if (mode === "threshold-compaction") events.splice(events.length-1,0,{type:"compaction_start",reason:"threshold"},{type:"compaction_end",reason:"threshold",result:{summary:"checkpoint",firstKeptEntryId:null,tokensBefore:100},aborted:false,willRetry:false});
 for (const e of events) process.stdout.write(JSON.stringify(e) + "\r\n");
 if (mode === "truncated") process.stdout.write("{");
 process.exitCode = mode === "nonzero" ? 1 : 0;

@@ -1,3 +1,4 @@
+import { normalizePi } from "../adapters/pi/normalize.js";
 import { readPiCanonical } from "../adapters/pi/format.js";
 import { createHash } from "node:crypto";
 import type { CaptureResult, JsonValue, ThreadShiftBundle } from "./types.js";
@@ -66,18 +67,42 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
     else if (Array.isArray(value)) value.forEach(remember);
     else if (value && typeof value === "object") Object.values(value).forEach(remember);
   };
+  const privateRaw = new Set<string>();
+  const confidentialCalls = new Set<string>();
+  const forcedExclusions = new Set<string>();
+  const visit = (value: JsonValue, callback: (entry: { [key: string]: JsonValue }) => void): void => {
+    if (Array.isArray(value)) value.forEach(item => visit(item, callback));
+    else if (value && typeof value === "object") { callback(value); Object.values(value).forEach(item => visit(item, callback)); }
+  };
+  if (bundle.source.harness === "pi") {
+    for (const raw of bundle.history.rawRecords) if (references(raw.value, rules)) visit(raw.value, entry => {
+      if (entry.type === "toolCall" && typeof entry.id === "string") confidentialCalls.add(entry.id);
+    });
+    const taintedEntries = new Set<string>();
+    for (const raw of bundle.history.rawRecords) visit(raw.value, entry => {
+      if (entry.role === "toolResult" && typeof entry.toolCallId === "string" && confidentialCalls.has(entry.toolCallId)) {
+        forcedExclusions.add(raw.id); if (entry.content !== undefined) remember(entry.content);
+        const envelope = raw.value; if (envelope && typeof envelope === "object" && !Array.isArray(envelope) && typeof envelope.id === "string") taintedEntries.add(envelope.id);
+      }
+    });
+    for (const raw of bundle.history.rawRecords) { const value=raw.value; if (value && typeof value === "object" && !Array.isArray(value) && value.type === "context_edit" && typeof value.targetId === "string" && taintedEntries.has(value.targetId)) { forcedExclusions.add(raw.id); if (value.replacement !== undefined) remember(value.replacement); } }
+  }
+  const confidentialParts = (content: JsonValue | undefined): JsonValue[] => Array.isArray(content) ? content.map(part => {
+    if (part && typeof part === "object" && !Array.isArray(part) && part.type === "toolCall" && typeof part.id === "string") return { type: "toolCall", id: part.id, ...(typeof part.name === "string" ? {name:part.name} : {}), arguments: { excluded: omitted } };
+    return { type: "text", text: omitted };
+  }) : [{type:"text",text:omitted}];
   for (const raw of bundle.history.rawRecords) {
     const value = raw.value;
     const scrubReasoning = (entry: JsonValue): void => {
       if (Array.isArray(entry)) { entry.forEach(scrubReasoning); return; }
       if (typeof entry !== "object" || entry === null) return;
       if (bundle.source.harness === "pi") {
-        const strip = (key: string, label: string): void => { if (Object.hasOwn(entry, key)) { remember(entry[key]!); entry[key] = label; exclusions.add("pi.private-content"); } };
+        const strip = (key: string, label: string): void => { if (Object.hasOwn(entry, key)) { remember(entry[key]!); privateRaw.add(raw.id); entry[key] = label; exclusions.add("pi.private-content"); } };
         for (const key of ["thinkingSignature", "textSignature", "thoughtSignature", "providerState", "providerResultState", "providerContext"]) strip(key, "[EXCLUDED: provider-private state]");
         if (entry.type === "thinking") for (const key of ["thinking", "text", "signature"]) strip(key, "[EXCLUDED: non-user-visible reasoning]");
         if (entry.type === "image") strip("data", "[EXCLUDED: media content]");
         if (entry.type === "custom") strip("data", "[EXCLUDED: opaque custom state]");
-        if (entry.role === "system") for (const key of ["content", "sections", "tools"]) strip(key, "[EXCLUDED: source system configuration]");
+        if (entry.role === "system") for (const key of ["content", "sections", "tools", "toolsAdded", "toolsRemoved"]) strip(key, "[EXCLUDED: source system configuration]");
         if (entry.type === "custom_message") strip("details", "[EXCLUDED: opaque custom metadata]");
       }
       if (entry.type === "reasoning") {
@@ -113,13 +138,13 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
     };
     scrubReasoning(value);
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      if (references(value, rules)) {
+      if (references(value, rules) || forcedExclusions.has(raw.id)) {
         if (bundle.source.harness === "pi") {
           // Keep graph/control references while excluding conversation payloads.
           const retained = pick(value, ["id", "type", "parentId", "timestamp", "version", "cwd", "firstKeptEntryId", "targetId", "tokensBefore"]);
-          if (value.type === "message" && value.message && typeof value.message === "object" && !Array.isArray(value.message)) retained.message = { ...pick(value.message, ["role", "stopReason", "toolCallId", "toolName", "timestamp"]), content: value.message.role === "assistant" ? [{ type: "text", text: omitted }] : omitted };
+          if (value.type === "message" && value.message && typeof value.message === "object" && !Array.isArray(value.message)) retained.message = { ...pick(value.message, ["role", "stopReason", "toolCallId", "toolName", "timestamp"]), content: value.message.role === "assistant" ? confidentialParts(value.message.content) : omitted };
           if (["compaction", "branch_summary"].includes(String(value.type))) retained.summary = omitted;
-          if (value.type === "context_edit") retained.replacement = value.replacement === null ? null : { content: omitted };
+          if (value.type === "context_edit") retained.replacement = value.replacement === null ? null : { content: confidentialParts(value.replacement && typeof value.replacement === "object" && !Array.isArray(value.replacement) ? value.replacement.content : undefined) };
           if (value.type === "custom_message") retained.content = omitted;
           raw.value = { ...retained, excluded: omitted };
         } else raw.value = { ...(typeof value.id === "string" ? { id: value.id } : {}), ...(typeof value.type === "string" ? { type: value.type } : {}), excluded: omitted };
@@ -127,16 +152,19 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
       }
     } else if (references(value, rules)) { raw.value = omitted; excludedRaw.add(raw.id); }
   }
+  const piVisible = new Map<string, Set<string>>();
+  if (bundle.source.harness === "pi") for (const event of normalizePi(bundle.history.rawRecords).events) if (event.text !== undefined) for (const id of event.rawRecordIds) { const texts=piVisible.get(id) ?? new Set<string>(); texts.add(event.text); piVisible.set(id,texts); }
   const excludedEvents = new Set<string>();
   const rawById = new Map(bundle.history.rawRecords.map(raw => [raw.id, raw]));
   for (const event of bundle.history.events) {
-    if (event.rawRecordIds.some((id) => excludedRaw.has(id)) || (event.text && referencesPrivatePath(event.text, rules))) {
-      const visibleTextIsSafe = bundle.source.harness === "opencode" && typeof event.text === "string" && !referencesPrivatePath(event.text, rules) && event.rawRecordIds.length > 0 && event.rawRecordIds.every(id => {
+    if (event.rawRecordIds.some((id) => excludedRaw.has(id) || privateRaw.has(id)) || (event.text && referencesPrivatePath(event.text, rules))) {
+      const piTextIsSafe = bundle.source.harness === "pi" && typeof event.text === "string" && !referencesPrivatePath(event.text, rules) && event.rawRecordIds.length > 0 && event.rawRecordIds.every(id => !excludedRaw.has(id) && piVisible.get(id)?.has(event.text!));
+      const visibleTextIsSafe = piTextIsSafe || bundle.source.harness === "opencode" && typeof event.text === "string" && !referencesPrivatePath(event.text, rules) && event.rawRecordIds.length > 0 && event.rawRecordIds.every(id => {
         const value = rawById.get(id)?.value;
         return value && typeof value === "object" && !Array.isArray(value) && ["text", "user"].includes(String(value.type)) && value.text === event.text;
       });
       if (!visibleTextIsSafe) event.text = omitted;
-      excludedEvents.add(event.id);
+      if (bundle.source.harness !== "pi" || !visibleTextIsSafe) excludedEvents.add(event.id);
     }
   }
   for (const value of [bundle.handoff.objective, bundle.handoff.latestRequest, bundle.handoff.currentState, ...bundle.handoff.completed, ...bundle.handoff.decisions, ...bundle.handoff.remaining, ...bundle.handoff.blockers, ...bundle.handoff.nextActions, ...bundle.handoff.importantFiles, ...bundle.handoff.verificationState, ...bundle.handoff.activePlan, ...bundle.provenance]) {
@@ -162,14 +190,36 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
   }
   if (exclusions.has("media.content") && !bundle.warnings.some(entry => entry.code === "MEDIA_CONTENT_EXCLUDED")) bundle.warnings.push({ code: "MEDIA_CONTENT_EXCLUDED", message: "Inline attachment content was excluded; safe reference metadata may remain.", eventIds: [] });
   bundle.manifest.exclusions = [...exclusions];
-  // Remove recognized private fragments from every linked or duplicated copy, including warnings.
-  const removeCopies = (value: JsonValue): JsonValue => {
-    if (typeof value === "string") { for (const fragment of privateStrings) if (value.includes(fragment)) value = value.split(fragment).join("[EXCLUDED: private content]"); return value; }
-    if (Array.isArray(value)) return value.map(removeCopies);
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, removeCopies(item)]));
+  // Copy filtering is scoped to payloads. Native graph/lifecycle fields remain literal.
+  const cleanText = (value: string, verified = false): string => {
+    if (value.startsWith("[EXCLUDED:")) return value;
+    for (const fragment of privateStrings) {
+      if (fragment.length >= 8 && value.includes(fragment)) value = value.split(fragment).join("[EXCLUDED: private content]");
+      else if (!verified && value === fragment) value = "[EXCLUDED: private content]";
+    }
     return value;
   };
-  const redacted = redactRecord(removeCopies(bundle as unknown as JsonValue));
+  const cleanPayload = (value: JsonValue): JsonValue => typeof value === "string" ? cleanText(value) : Array.isArray(value) ? value.map(cleanPayload) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key,item])=>[key,cleanPayload(item)])) : value;
+  const cleanNative = (value: JsonValue): JsonValue => {
+    if (typeof value === "string") return cleanText(value, true);
+    if (Array.isArray(value)) return value.map(cleanNative);
+    if (value && typeof value === "object") {
+      const envelope = value.type === "session" || Object.hasOwn(value, "parentId");
+      const message = ["user", "assistant", "toolResult", "system"].includes(String(value.role));
+      const structural = (key: string): boolean => key === "type" || envelope && ["id","parentId","timestamp","version","cwd","firstKeptEntryId","targetId","customType"].includes(key) || message && ["role","stopReason","toolCallId","toolName","timestamp","provider","model","api"].includes(key) || value.type === "toolCall" && ["id","name"].includes(key);
+      return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,structural(key) ? item : cleanNative(item)]));
+    }
+    return value;
+  };
+  if (bundle.source.harness === "pi") {
+    for (const raw of bundle.history.rawRecords) raw.value = cleanNative(raw.value);
+    for (const event of bundle.history.events) if (event.text !== undefined) event.text = cleanText(event.text, event.rawRecordIds.every(id=>piVisible.get(id)?.has(event.text!)));
+    for (const item of [bundle.handoff.objective,bundle.handoff.latestRequest,bundle.handoff.currentState,...bundle.handoff.completed,...bundle.handoff.decisions,...bundle.handoff.remaining,...bundle.handoff.blockers,...bundle.handoff.nextActions,...bundle.handoff.importantFiles,...bundle.handoff.verificationState,...bundle.handoff.activePlan,...bundle.provenance]) if (item) item.value = cleanPayload(item.value) as typeof item.value;
+    for (const item of [...bundle.warnings,...bundle.git.warnings]) item.message = cleanText(item.message);
+    bundle.configuration.references = bundle.configuration.references.map(cleanPayload);
+    bundle.artifacts.references = bundle.artifacts.references.map(cleanPayload);
+  }
+  const redacted = redactRecord(bundle as unknown as JsonValue);
   const candidate = redacted.value as unknown as ThreadShiftBundle;
   if (candidate.source.harness === "pi" && readPiCanonical(candidate.history.rawRecords, candidate.source).completeness !== "complete") candidate.manifest.completeness = "incomplete";
   const safe = validateBundle(candidate);
