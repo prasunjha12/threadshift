@@ -29,7 +29,7 @@ test("validated bundle round trip preserves unknown raw records and order", () =
 test("bundle validation rejects unsupported schemas, false counts, and dangling raw links", () => {
   assert.equal(typeof core.validateBundle, "function");
   for (const mutate of [
-    (bundle) => { bundle.manifest.schemaVersion = 3; },
+    (bundle) => { bundle.manifest.schemaVersion = 4; },
     (bundle) => { bundle.manifest.counts.events = 2; },
     (bundle) => { bundle.history.events[0].rawRecordIds = ["missing"]; },
   ]) {
@@ -129,7 +129,7 @@ test("schema 2 supports both harnesses while schema 1 remains Codex-only", () =>
   assert.equal(core.validateBundle(old).manifest.schemaVersion, 1);
   old.source.harness = "opencode";
   assert.throws(() => core.validateBundle(old), error => error.code === "INVALID_BUNDLE");
-  for (const [schema, harness] of [[3, "codex"], [2, "unknown"]]) {
+  for (const [schema, harness] of [[4, "codex"], [2, "unknown"]]) {
     const invalid = validBundle();
     invalid.manifest.schemaVersion = schema;
     invalid.source.harness = harness;

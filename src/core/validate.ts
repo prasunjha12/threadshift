@@ -88,7 +88,7 @@ function validateEvent(value: unknown, index: number): Event {
 export function validateBundle(input: unknown): ThreadShiftBundle {
   const bundle = record(input, "bundle");
   const manifest = record(bundle.manifest, "manifest");
-  if (manifest.schemaVersion !== 1 && manifest.schemaVersion !== 2) throw new ThreadShiftError("Unsupported ThreadShift bundle schema version", "INVALID_BUNDLE");
+  if (manifest.schemaVersion !== 1 && manifest.schemaVersion !== 2 && manifest.schemaVersion !== 3) throw new ThreadShiftError("Unsupported ThreadShift bundle schema version", "INVALID_BUNDLE");
   string(manifest.bundleId, "manifest.bundleId");
   assertSafeIdentifier(manifest.bundleId as string, "manifest.bundleId");
   string(manifest.capturedAt, "manifest.capturedAt");
@@ -124,9 +124,19 @@ export function validateBundle(input: unknown): ThreadShiftBundle {
   const warnings = (bundle.warnings as unknown[]).map((warning, index) => validateWarning(warning, knownEvents, `warnings[${index}]`));
   const handoff = validateHandoff(bundle.handoff, knownEvents);
   const source = record(bundle.source, "source");
-  if (source.harness !== "codex" && !(manifest.schemaVersion === 2 && source.harness === "opencode")) throw new ThreadShiftError("source.harness is unsupported for this schema", "INVALID_BUNDLE");
+  if (!["codex", "opencode", "pi"].includes(String(source.harness)) || (manifest.schemaVersion === 1 && source.harness !== "codex") || (manifest.schemaVersion === 2 && source.harness === "pi")) throw new ThreadShiftError("source.harness is unsupported for this schema", "INVALID_BUNDLE");
   for (const key of ["runtimeVersion", "sessionId", "captureMechanism", "workingDirectory"]) string(source[key], `source.${key}`);
-  assertSafeIdentifier(source.sessionId as string, "source.sessionId");
+  if (source.harness === "pi") {
+    const nativeId = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
+    if (!nativeId.test(String(source.sessionId))) throw new ThreadShiftError("Invalid Pi session identity", "INVALID_BUNDLE");
+    const selection = record(source.selection, "source.selection");
+    if (selection.kind !== "pi-branch" || typeof selection.leafId !== "string" || !nativeId.test(selection.leafId)) throw new ThreadShiftError("Invalid Pi branch selection", "INVALID_BUNDLE");
+    for (const key of ["totalEntries", "selectedEntries", "excludedEntries"]) if (!Number.isSafeInteger(selection[key]) || (selection[key] as number) < 0) throw new ThreadShiftError("Invalid Pi selection counts", "INVALID_BUNDLE");
+    if ((selection.selectedEntries as number) < 1 || (selection.selectedEntries as number) + (selection.excludedEntries as number) !== selection.totalEntries) throw new ThreadShiftError("Pi selection counts do not reconcile", "INVALID_BUNDLE");
+  } else {
+    assertSafeIdentifier(source.sessionId as string, "source.sessionId");
+    if (source.selection !== undefined) throw new ThreadShiftError("Selection metadata requires a Pi source", "INVALID_BUNDLE");
+  }
   const workspace = record(bundle.workspace, "workspace");
   for (const key of ["root", "inspectedAt", "digest"]) string(workspace[key], `workspace.${key}`);
   for (const key of ["instructionReferences", "artifactReferences"]) stringArray(workspace[key], `workspace.${key}`);

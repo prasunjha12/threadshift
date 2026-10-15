@@ -23,7 +23,7 @@ export function createBundle(
   }
   const bundle: ThreadShiftBundle = {
     manifest: {
-      schemaVersion: capture.source.harness === "codex" ? 1 : 2,
+      schemaVersion: capture.source.harness === "codex" ? 1 : capture.source.harness === "pi" ? 3 : 2,
       bundleId: randomUUID(),
       capturedAt,
       completeness: capture.completeness,

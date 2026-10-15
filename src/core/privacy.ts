@@ -22,7 +22,7 @@ function references(value: unknown, rules: string[]): boolean {
 /** Apply the canonical privacy boundary before a source adapter returns readable history. */
 export function sanitizeCapture(capture: CaptureResult): CaptureResult {
   const safe = sanitizeBundle({
-    manifest: { schemaVersion: capture.source.harness === "codex" ? 1 : 2, bundleId: "capture", capturedAt: new Date(0).toISOString(), completeness: capture.completeness, counts: { events: capture.events.length, rawRecords: capture.rawRecords.length }, sourceDigest: capture.sourceDigest, workspaceDigest: "uninspected", exclusions: capture.exclusions },
+    manifest: { schemaVersion: capture.source.harness === "codex" ? 1 : capture.source.harness === "pi" ? 3 : 2, bundleId: "capture", capturedAt: new Date(0).toISOString(), completeness: capture.completeness, counts: { events: capture.events.length, rawRecords: capture.rawRecords.length }, sourceDigest: capture.sourceDigest, workspaceDigest: "uninspected", exclusions: capture.exclusions },
     source: capture.source, history: { events: capture.events, rawRecords: capture.rawRecords },
     workspace: { root: capture.source.workingDirectory, inspectedAt: new Date(0).toISOString(), digest: "uninspected", changedFiles: [], instructionReferences: [], artifactReferences: [] },
     git: { present: false, head: null, branch: null, status: [], patches: [], warnings: [] },
@@ -42,7 +42,7 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
   for (const key of ["completed", "decisions", "remaining", "blockers", "nextActions", "importantFiles", "verificationState", "activePlan"] as const) handoff[key] = handoff[key].map((entry) => evidence(entry)!);
   const bundle: ThreadShiftBundle = {
     manifest: { ...pick(original.manifest, ["schemaVersion", "bundleId", "capturedAt", "completeness", "counts", "sourceDigest", "workspaceDigest", "exclusions"]), counts: pick(original.manifest.counts, ["events", "rawRecords"]) },
-    source: pick(original.source, ["harness", "runtimeVersion", "sessionId", "captureMechanism", "workingDirectory"]),
+    source: { ...pick(original.source, ["harness", "runtimeVersion", "sessionId", "captureMechanism", "workingDirectory"]), ...(original.source.selection ? { selection: pick(original.source.selection, ["kind", "leafId", "totalEntries", "selectedEntries", "excludedEntries"]) } : {}) },
     history: {
       events: original.history.events.map((entry) => pick(entry, ["id", "order", "kind", "sourceId", "timestamp", "text", "callId", "rawRecordIds"])),
       rawRecords: original.history.rawRecords.map((entry) => ({ ...pick(entry, ["id", "sourceLocator", "value"]), value: structuredClone(entry.value) })),
@@ -59,11 +59,26 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
   };
   const exclusions = new Set(bundle.manifest.exclusions);
   const excludedRaw = new Set<string>();
+  const privateStrings = new Set<string>();
+  const remember = (value: JsonValue): void => {
+    if (typeof value === "string" && value && !value.startsWith("[EXCLUDED:")) privateStrings.add(value);
+    else if (Array.isArray(value)) value.forEach(remember);
+    else if (value && typeof value === "object") Object.values(value).forEach(remember);
+  };
   for (const raw of bundle.history.rawRecords) {
     const value = raw.value;
     const scrubReasoning = (entry: JsonValue): void => {
       if (Array.isArray(entry)) { entry.forEach(scrubReasoning); return; }
       if (typeof entry !== "object" || entry === null) return;
+      if (bundle.source.harness === "pi") {
+        const strip = (key: string, label: string): void => { if (Object.hasOwn(entry, key)) { remember(entry[key]!); entry[key] = label; exclusions.add("pi.private-content"); } };
+        for (const key of ["thinkingSignature", "textSignature", "thoughtSignature", "providerState", "providerResultState", "providerContext"]) strip(key, "[EXCLUDED: provider-private state]");
+        if (entry.type === "thinking") for (const key of ["thinking", "text", "signature"]) strip(key, "[EXCLUDED: non-user-visible reasoning]");
+        if (entry.type === "image") strip("data", "[EXCLUDED: media content]");
+        if (entry.type === "custom") strip("data", "[EXCLUDED: opaque custom state]");
+        if (entry.role === "system") for (const key of ["content", "sections", "tools"]) strip(key, "[EXCLUDED: source system configuration]");
+        if (entry.type === "custom_message") strip("details", "[EXCLUDED: opaque custom metadata]");
+      }
       if (entry.type === "reasoning") {
         excludedRaw.add(raw.id);
         for (const field of ["content", "summary", "text", "state", "providerState", "providerResultState", "providerContext"]) if (Object.hasOwn(entry, field)) {
@@ -138,11 +153,18 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
   }
   if (exclusions.has("media.content") && !bundle.warnings.some(entry => entry.code === "MEDIA_CONTENT_EXCLUDED")) bundle.warnings.push({ code: "MEDIA_CONTENT_EXCLUDED", message: "Inline attachment content was excluded; safe reference metadata may remain.", eventIds: [] });
   bundle.manifest.exclusions = [...exclusions];
-  const redacted = redactRecord(bundle as unknown as JsonValue);
+  // Remove recognized private fragments from every linked or duplicated copy, including warnings.
+  const removeCopies = (value: JsonValue): JsonValue => {
+    if (typeof value === "string") { for (const fragment of privateStrings) if (value.includes(fragment)) value = value.split(fragment).join("[EXCLUDED: private content]"); return value; }
+    if (Array.isArray(value)) return value.map(removeCopies);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, removeCopies(item)]));
+    return value;
+  };
+  const redacted = redactRecord(removeCopies(bundle as unknown as JsonValue));
   const safe = validateBundle(redacted.value);
   for (const item of redacted.warnings) if (!safe.warnings.some((entry) => entry.code === item.code && entry.message === item.message)) safe.warnings.push(item);
   for (const item of [...safe.warnings, ...safe.git.warnings]) if (referencesPrivatePath(item.message, rules)) item.message = omitted;
-  safe.manifest.sourceDigest = hash(safe.history.rawRecords);
+  safe.manifest.sourceDigest = hash(safe.source.harness === "pi" ? { selection: safe.source.selection, rawRecords: safe.history.rawRecords } : safe.history.rawRecords);
   safe.workspace.digest = hash({ changedFiles: safe.workspace.changedFiles, instructionReferences: safe.workspace.instructionReferences, git: safe.git });
   safe.manifest.workspaceDigest = safe.workspace.digest;
   return validateBundle(safe);

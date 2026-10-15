@@ -196,7 +196,7 @@ async function unwrapPowerShell(path: string): Promise<HarnessDescriptor> {
   throw new ProcessError(`Unsupported PowerShell launcher format: ${path}`, "PROCESS_FAILED");
 }
 
-export async function resolveHarness(name: "codex" | "opencode", override?: string): Promise<HarnessDescriptor> {
+export async function resolveHarness(name: "codex" | "opencode" | "pi", override?: string): Promise<HarnessDescriptor> {
   const isWindows = process.platform === "win32";
   const pathEntries = (process.env.PATH ?? "").split(delimiter);
   const names = isWindows ? [`${name}.exe`, `${name}.ps1`, `${name}.cmd`, name] : [name];

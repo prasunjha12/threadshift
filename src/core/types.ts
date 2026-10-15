@@ -1,5 +1,5 @@
 export type JsonPrimitive = string | number | boolean | null;
-export type Harness = "codex" | "opencode";
+export type Harness = "codex" | "opencode" | "pi";
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type EvidenceOrigin = "observed" | "source-stated" | "user-supplied" | "inferred";
 
@@ -76,9 +76,13 @@ export interface WorkspaceSnapshot {
   warnings: Warning[];
 }
 
+export interface PiBranchSelection {
+  kind: "pi-branch"; leafId: string; totalEntries: number; selectedEntries: number; excludedEntries: number;
+}
+
 export interface ThreadShiftBundle {
   manifest: {
-    schemaVersion: 1 | 2;
+    schemaVersion: 1 | 2 | 3;
     bundleId: string;
     capturedAt: string;
     completeness: "complete" | "incomplete";
@@ -91,6 +95,7 @@ export interface ThreadShiftBundle {
     harness: Harness;
     runtimeVersion: string;
     sessionId: string;
+    selection?: PiBranchSelection;
     captureMechanism: string;
     workingDirectory: string;
   };
@@ -124,7 +129,7 @@ export interface SmartContext {
 }
 
 export interface ConversionReport {
-  source: { harness: string; sessionId: string; runtimeVersion: string };
+  source: { harness: string; sessionId: string; runtimeVersion: string; selection?: PiBranchSelection };
   destination: { harness: Harness; runtimeVersion: string };
   mode: "smart";
   completeness: "complete" | "incomplete";

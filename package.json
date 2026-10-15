@@ -32,9 +32,10 @@
     "test:acceptance": "node --test test/acceptance.test.mjs",
     "test:package": "node --test test/package.test.mjs",
     "test:privacy": "node --test test/privacy.test.mjs",
-    "test": "npm run build && npm run test:runtime && npm run test:core && npm run test:codex && npm run test:codex-delivery && npm run test:opencode && npm run test:workspace && npm run test:context && npm run test:cli && npm run test:acceptance && npm run test:privacy",
+    "test": "npm run build && npm run test:runtime && npm run test:core && npm run test:codex && npm run test:codex-delivery && npm run test:opencode && npm run test:workspace && npm run test:context && npm run test:cli && npm run test:acceptance && npm run test:privacy && npm run test:pi-schema",
     "test:opencode": "node --test test/opencode.test.mjs",
-    "test:codex-delivery": "node --test test/codex-delivery.test.mjs"
+    "test:codex-delivery": "node --test test/codex-delivery.test.mjs",
+    "test:pi-schema": "node --test test/pi-schema.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
