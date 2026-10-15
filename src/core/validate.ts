@@ -1,3 +1,4 @@
+import { readPiCanonical } from "../adapters/pi/format.js";
 import { ThreadShiftError } from "./errors.js";
 import { assertSafeIdentifier } from "./privacy-paths.js";
 import type { Event, HandoffState, JsonValue, RawRecord, ThreadShiftBundle, Warning } from "./types.js";
@@ -137,6 +138,7 @@ export function validateBundle(input: unknown): ThreadShiftBundle {
     assertSafeIdentifier(source.sessionId as string, "source.sessionId");
     if (source.selection !== undefined) throw new ThreadShiftError("Selection metadata requires a Pi source", "INVALID_BUNDLE");
   }
+  if (source.harness === "pi") readPiCanonical(rawRecords, source as unknown as ThreadShiftBundle["source"]);
   const workspace = record(bundle.workspace, "workspace");
   for (const key of ["root", "inspectedAt", "digest"]) string(workspace[key], `workspace.${key}`);
   for (const key of ["instructionReferences", "artifactReferences"]) stringArray(workspace[key], `workspace.${key}`);

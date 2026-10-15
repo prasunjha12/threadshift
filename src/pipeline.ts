@@ -4,6 +4,7 @@ import type { CaptureResult, ConversionReport, Evidence, HandoffState, Harness, 
 import { ThreadShiftError } from "./core/errors.js";
 import { sanitizeBundle } from "./core/privacy.js";
 import { loadPrivacyRules } from "./core/privacy-paths.js";
+import { capturePi } from "./adapters/pi/capture.js";
 import { captureCodex } from "./adapters/codex/capture.js";
 import { captureOpenCode } from "./adapters/opencode/capture.js";
 import { deriveHandoff, sanitizeHandoffFields } from "./context/handoff.js";
@@ -59,6 +60,9 @@ export async function captureBundle(options: {
   codexBin?: string;
   codexHome?: string;
   opencodeBin?: string;
+  piBin?: string;
+  piHome?: string;
+  piLeaf?: string;
   handoffFields?: unknown;
 }, signal?: AbortSignal): Promise<{ bundle: ThreadShiftBundle; workspace: WorkspaceSnapshot }> {
   const captureOptions = {
@@ -67,7 +71,10 @@ export async function captureBundle(options: {
     ...(options.codexHome ? { codexHome: options.codexHome } : {}),
     cwd: options.workspaceRoot,
   };
-  const capture = options.from === "opencode"
+  if (options.from !== undefined && !["codex", "opencode", "pi"].includes(options.from)) throw new ThreadShiftError("Unsupported source harness", "INVALID_ARGUMENT");
+  const capture = options.from === "pi"
+    ? await capturePi({ sessionId: options.sessionId, cwd: options.workspaceRoot, ...(options.piBin ? { executable: options.piBin } : {}), ...(options.piHome ? { piHome: options.piHome } : {}), ...(options.piLeaf ? { leafId: options.piLeaf } : {}) }, signal)
+    : options.from === "opencode"
     ? await captureOpenCode({ sessionId: options.sessionId, cwd: options.workspaceRoot, ...(options.opencodeBin ? { executable: options.opencodeBin } : {}) }, signal)
     : await captureCodex(captureOptions, signal);
   const workspace = await inspectWorkspace(options.workspaceRoot);
@@ -97,7 +104,7 @@ export function createReport(
   options: { preparation: ConversionReport["preparation"]; warnings?: Warning[]; destination?: Harness } ,
 ): ConversionReport {
   return {
-    source: { harness: bundle.source.harness, sessionId: bundle.source.sessionId, runtimeVersion: bundle.source.runtimeVersion },
+    source: { harness: bundle.source.harness, sessionId: bundle.source.sessionId, runtimeVersion: bundle.source.runtimeVersion, ...(bundle.source.selection ? { selection: bundle.source.selection } : {}) },
     destination: { harness: options.destination ?? "opencode", runtimeVersion: destinationVersion },
     mode: "smart",
     completeness: bundle.manifest.completeness,

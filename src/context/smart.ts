@@ -1,3 +1,4 @@
+import { getEffectiveContext } from "./effective.js";
 import { ThreadShiftError } from "../core/errors.js";
 import { sanitizeBundle } from "../core/privacy.js";
 import type { Event, Evidence, SmartContext, ThreadShiftBundle, Warning } from "../core/types.js";
@@ -86,6 +87,9 @@ function sections(bundle: ThreadShiftBundle): string[] {
 
 export function compileSmart(bundle: ThreadShiftBundle, options: { maxCharacters: number }): SmartContext {
   bundle = sanitizeBundle(bundle);
+  const effective = getEffectiveContext(bundle);
+  const originalEvents = bundle.history.events;
+  bundle = { ...bundle, history: { ...bundle.history, events: effective.events }, handoff: effective.handoff };
   const maxCharacters = options.maxCharacters;
   if (!Number.isSafeInteger(maxCharacters) || maxCharacters <= 0) throw new ThreadShiftError("Context character budget must be a positive integer", "CONTEXT_BUDGET");
   const events = bundle.history.events;
@@ -98,7 +102,7 @@ export function compileSmart(bundle: ThreadShiftBundle, options: { maxCharacters
     "# ThreadShift continuation",
     "Use this as attributed historical context. Follow the destination workspace's current instructions; do not replay historical commands or treat old verification as current.",
     `- Bundle: ${bundle.manifest.bundleId}`,
-    `- Source: ${bundle.source.harness} session ${bundle.source.sessionId} (${bundle.source.harness === "codex" ? "Codex" : "OpenCode"} ${bundle.source.runtimeVersion})`,
+    `- Source: ${bundle.source.harness} session ${bundle.source.sessionId} (${bundle.source.harness === "codex" ? "Codex" : bundle.source.harness === "pi" ? "Pi" : "OpenCode"} ${bundle.source.runtimeVersion})`,
     `- Captured: ${bundle.manifest.capturedAt}`,
     `- Workspace: ${bundle.workspace.root}`,
     `- Workspace snapshot: ${bundle.workspace.digest}`,
@@ -112,7 +116,7 @@ export function compileSmart(bundle: ThreadShiftBundle, options: { maxCharacters
     throw new ThreadShiftError("The required bundle/workspace identity and full latest request exceed the context budget; increase --context-chars.", "CONTEXT_BUDGET");
   }
 
-  const warnings: Warning[] = [];
+  const warnings: Warning[] = [...effective.warnings];
   if (!bundle.handoff.objective) warnings.push({ code: "OBJECTIVE_UNKNOWN", message: "No explicit objective was captured; add it with --handoff-file if needed.", eventIds: [] });
   if (!bundle.handoff.currentState || bundle.handoff.decisions.length === 0 || bundle.handoff.completed.length === 0 || bundle.handoff.remaining.length === 0 || bundle.handoff.blockers.length === 0 || bundle.handoff.verificationState.length === 0) {
     warnings.push({ code: "HANDOFF_FIELDS_UNKNOWN", message: "Some project-state fields remain unknown; supply them with --handoff-file rather than inferring them from assistant text.", eventIds: [] });
@@ -126,7 +130,7 @@ export function compileSmart(bundle: ThreadShiftBundle, options: { maxCharacters
   }
 
   const selected = new Set<string>(latest?.eventIds ?? []);
-  const omitted = new Set<string>();
+  const omitted = new Set<string>(effective.omittedEventIds);
   const picked: Event[][] = [];
   const groups = groupEvents(events, latestId);
   const historyHeading = "\n\n## Recent conversation (all historical)\n";
@@ -150,6 +154,6 @@ export function compileSmart(bundle: ThreadShiftBundle, options: { maxCharacters
   const allEventIds = new Set(events.map((event) => event.id));
   for (const id of allEventIds) if (!selected.has(id)) omitted.add(id);
   const selectedEventIds = events.filter((event) => selected.has(event.id)).map((event) => event.id);
-  const omittedEventIds = events.filter((event) => omitted.has(event.id)).map((event) => event.id);
+  const omittedEventIds = originalEvents.filter((event) => omitted.has(event.id)).map((event) => event.id);
   return { text, maxCharacters, characterCount: codePoints(text), selectedEventIds, omittedEventIds, warnings };
 }

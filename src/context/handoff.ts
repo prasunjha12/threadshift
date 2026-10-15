@@ -1,3 +1,4 @@
+import { projectPiContext } from "../adapters/pi/normalize.js";
 import { ThreadShiftError } from "../core/errors.js";
 import type { CaptureResult, Evidence, Event, HandoffState, JsonValue, Warning, WorkspaceSnapshot } from "../core/types.js";
 import { redactRecord } from "../core/redact.js";
@@ -58,8 +59,8 @@ export function sanitizeHandoffFields(input: unknown): { fields: Partial<Record<
   return { fields: sanitized.value as Partial<Record<FieldName, string | string[]>>, warnings: sanitized.warnings };
 }
 
-export function deriveHandoff(capture: Pick<CaptureResult, "events">, _workspace: WorkspaceSnapshot, userFields?: unknown): HandoffState {
-  const events = ordered(capture.events);
+export function deriveHandoff(capture: Pick<CaptureResult, "events"> & Partial<Pick<CaptureResult, "source" | "rawRecords">>, _workspace: WorkspaceSnapshot, userFields?: unknown): HandoffState {
+  const events = ordered(capture.source?.harness === "pi" && capture.rawRecords ? projectPiContext(capture.rawRecords, capture.source).events : capture.events);
   const fields = sanitizeHandoffFields(userFields).fields;
   const latestUser = events.filter((event) => event.kind === "user").at(-1);
   const objective = typeof fields.objective === "string"
