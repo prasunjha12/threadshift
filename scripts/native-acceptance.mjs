@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 if (args.includes("--help") || args.length === 0) {
-  console.log("node scripts/native-acceptance.mjs --session ID --workspace DIR --output NEW_DIR [--codex-home DIR] [--launch --provider-kind real|native-local-fixture]");
+  console.log("node scripts/native-acceptance.mjs --session ID --workspace DIR --output NEW_DIR [--from codex|opencode --to opencode|codex] [--codex-home DIR] [--launch --provider-kind real|native-local-fixture]");
   process.exit(0);
 }
 const launch = args.includes("--launch");
@@ -18,13 +18,15 @@ const outputIndex = forwarded.indexOf("--output");
 if (outputIndex < 0 || !forwarded[outputIndex + 1]) throw new Error("--output NEW_DIR is required");
 const output = resolve(forwarded[outputIndex + 1]);
 const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
-const result = spawnSync(process.execPath, [cli, "handoff", "--from", "codex", "--to", "opencode", ...forwarded, "--json"], {
+const direction = [...(forwarded.includes("--from") ? [] : ["--from", "codex"]), ...(forwarded.includes("--to") ? [] : ["--to", "opencode"])];
+const result = spawnSync(process.execPath, [cli, "handoff", ...direction, ...forwarded, "--json"], {
   encoding: "utf8", timeout: 11 * 60 * 1000, windowsHide: true,
 });
 process.stdout.write(result.stdout ?? "");
 process.stderr.write(result.stderr ?? "");
-if (result.status !== 0) process.exit(result.status ?? 1);
-const report = JSON.parse(result.stdout);
+let report;
+try { report = JSON.parse(result.stdout); } catch { process.exit(result.status || 1); }
+if (report.error || result.error || report.preparation !== "prepared") process.exit(result.status || 1);
 if (report.preparation !== "prepared") throw new Error("Native evidence collection requires prepared output, not dry run");
 const bundle = JSON.parse(await readFile(join(output, "session.threadshift.json"), "utf8"));
 const evidence = {
@@ -39,3 +41,5 @@ const evidence = {
   nativeContinuationAcceptance: "pending-manual-response-and-no-replay-audit",
 };
 await writeFile(join(output, "native-evidence.json"), JSON.stringify(evidence, null, 2) + "\n", { flag: "wx" });
+
+process.exitCode = result.status ?? 1;

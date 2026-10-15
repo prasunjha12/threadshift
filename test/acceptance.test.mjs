@@ -109,3 +109,17 @@ test("fixture round trip carries attributed first context and distinct OpenCode 
   const requests = (await readFile(join(workspace, "requests.jsonl"), "utf8")).trim().split(/\r?\n/).map(JSON.parse);
   assert.ok(requests.every(x => x.method === "GET"));
 });
+
+test("native collector forwards reverse direction, keeps pending audits and failure packages", async t => {
+  const root = await mkdtemp(join(resolve("work/acceptance"), "collector-")); t.after(() => rm(root, {recursive:true,force:true}));
+  const workspace=join(root,"workspace");await mkdir(workspace);execFileSync("git",["init","--quiet"],{cwd:workspace});
+  const data=JSON.parse(await readFile(resolve("test/fixtures/opencode-native-contract.json"),"utf8"));
+  await writeFile(join(workspace,"source-fixture.json"),JSON.stringify({data,mode:"normal"}));
+  const base=[resolve("scripts/native-acceptance.mjs"),"--from","opencode","--to","codex","--session",data.info.id,"--workspace",workspace,"--opencode-bin",resolve("test/fixtures/opencode-source.mjs"),"--codex-bin",resolve("test/fixtures/codex-destination.mjs")];
+  const invoke=(extra,env={})=>spawnSync(process.execPath,[...base,...extra],{encoding:"utf8",timeout:30000,windowsHide:true,env:{...process.env,...env}});
+  const denied=invoke(["--output",join(root,"denied"),"--launch"]);assert.notEqual(denied.status,0);assert.match(denied.stderr,/provider-kind/);
+  const output=join(root,"prepared");const prepared=invoke(["--output",output]);assert.equal(prepared.status,0,prepared.stdout+prepared.stderr);
+  const evidence=JSON.parse(await readFile(join(output,"native-evidence.json"),"utf8"));assert.equal(evidence.source.harness,"opencode");assert.equal(evidence.destination.harness,"codex");assert.equal(evidence.launch.status,"not-run");assert.match(evidence.sourceInventoryComparison,/pending/);assert.match(evidence.nativeContinuationAcceptance,/pending/);
+  const failedOutput=join(root,"failed");const failed=invoke(["--output",failedOutput,"--launch","--provider-kind","native-local-fixture"],{THREADSHIFT_CODEX_MODE:"failed-turn"});assert.equal(failed.status,1);
+  const failedEvidence=JSON.parse(await readFile(join(failedOutput,"native-evidence.json"),"utf8"));assert.equal(failedEvidence.launch.status,"failed");await stat(join(failedOutput,"continuation.md"));
+});
