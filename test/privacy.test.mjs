@@ -10,6 +10,34 @@ import { createOpenCodeLaunchSpec } from "../dist/adapters/opencode/deliver.js";
 import { validBundle } from "./fixtures/bundle.mjs";
 
 const scratch = resolve("work/privacy-tests");
+
+test("OpenCode-shaped reasoning text and state cannot leak through linked copies", () => {
+  const bundle = validBundle();
+  const dummy = "SYNTHETIC_REASONING_COPY_ONLY";
+  bundle.history.rawRecords[0].value = { type: "reasoning", text: dummy, state: { cachedSummary: dummy }, time: { created: 1000, hidden: dummy } };
+  bundle.history.events[0].text = dummy;
+  bundle.handoff.latestRequest.value = dummy;
+  bundle.provenance = [{ value: dummy, origin: "source-stated", eventIds: ["event-1"] }];
+  bundle.warnings = [{ code: "TEST_COPY", message: dummy, eventIds: ["event-1"] }];
+  const safe = sanitizeBundle(bundle);
+  assert.equal(JSON.stringify(safe).includes(dummy), false);
+  assert.ok(safe.manifest.exclusions.includes("reasoning.text"));
+  assert.deepEqual(sanitizeBundle(safe), safe);
+});
+
+test("OpenCode provider-private state is excluded while safe unknown raw metadata survives", () => {
+  const bundle = validBundle();
+  bundle.manifest.schemaVersion = 2;
+  bundle.source.harness = "opencode";
+  const dummy = "SYNTHETIC_OPAQUE_PROVIDER_ONLY";
+  bundle.history.rawRecords[0].value = { type: "assistant", providerState: { payload: dummy }, futureSafeMetadata: { count: 4 } };
+  bundle.history.events[0].text = dummy;
+  bundle.handoff.latestRequest.value = dummy;
+  const safe = sanitizeBundle(bundle);
+  assert.equal(JSON.stringify(safe).includes(dummy), false);
+  assert.deepEqual(safe.history.rawRecords[0].value.futureSafeMetadata, { count: 4 });
+  assert.ok(safe.manifest.exclusions.includes("provider-state"));
+});
 await mkdir(scratch, { recursive: true });
 async function temporary(t) {
   const root = await mkdtemp(join(scratch, "case-"));

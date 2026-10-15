@@ -88,7 +88,7 @@ function validateEvent(value: unknown, index: number): Event {
 export function validateBundle(input: unknown): ThreadShiftBundle {
   const bundle = record(input, "bundle");
   const manifest = record(bundle.manifest, "manifest");
-  if (manifest.schemaVersion !== 1) throw new ThreadShiftError("Unsupported ThreadShift bundle schema version", "INVALID_BUNDLE");
+  if (manifest.schemaVersion !== 1 && manifest.schemaVersion !== 2) throw new ThreadShiftError("Unsupported ThreadShift bundle schema version", "INVALID_BUNDLE");
   string(manifest.bundleId, "manifest.bundleId");
   assertSafeIdentifier(manifest.bundleId as string, "manifest.bundleId");
   string(manifest.capturedAt, "manifest.capturedAt");
@@ -124,7 +124,7 @@ export function validateBundle(input: unknown): ThreadShiftBundle {
   const warnings = (bundle.warnings as unknown[]).map((warning, index) => validateWarning(warning, knownEvents, `warnings[${index}]`));
   const handoff = validateHandoff(bundle.handoff, knownEvents);
   const source = record(bundle.source, "source");
-  if (source.harness !== "codex") throw new ThreadShiftError("source.harness is unsupported", "INVALID_BUNDLE");
+  if (source.harness !== "codex" && !(manifest.schemaVersion === 2 && source.harness === "opencode")) throw new ThreadShiftError("source.harness is unsupported for this schema", "INVALID_BUNDLE");
   for (const key of ["runtimeVersion", "sessionId", "captureMechanism", "workingDirectory"]) string(source[key], `source.${key}`);
   assertSafeIdentifier(source.sessionId as string, "source.sessionId");
   const workspace = record(bundle.workspace, "workspace");

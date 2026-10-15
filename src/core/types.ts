@@ -1,4 +1,5 @@
 export type JsonPrimitive = string | number | boolean | null;
+export type Harness = "codex" | "opencode";
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type EvidenceOrigin = "observed" | "source-stated" | "user-supplied" | "inferred";
 
@@ -77,7 +78,7 @@ export interface WorkspaceSnapshot {
 
 export interface ThreadShiftBundle {
   manifest: {
-    schemaVersion: 1;
+    schemaVersion: 1 | 2;
     bundleId: string;
     capturedAt: string;
     completeness: "complete" | "incomplete";
@@ -87,7 +88,7 @@ export interface ThreadShiftBundle {
     exclusions: string[];
   };
   source: {
-    harness: "codex";
+    harness: Harness;
     runtimeVersion: string;
     sessionId: string;
     captureMechanism: string;
@@ -124,7 +125,7 @@ export interface SmartContext {
 
 export interface ConversionReport {
   source: { harness: string; sessionId: string; runtimeVersion: string };
-  destination: { harness: "opencode"; runtimeVersion: string };
+  destination: { harness: Harness; runtimeVersion: string };
   mode: "smart";
   completeness: "complete" | "incomplete";
   preservedCounts: { events: number; rawRecords: number };

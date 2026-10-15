@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { validBundle } from "./fixtures/bundle.mjs";
+import { createBundle, createReport } from "../dist/pipeline.js";
 
 let core;
 try {
@@ -28,7 +29,7 @@ test("validated bundle round trip preserves unknown raw records and order", () =
 test("bundle validation rejects unsupported schemas, false counts, and dangling raw links", () => {
   assert.equal(typeof core.validateBundle, "function");
   for (const mutate of [
-    (bundle) => { bundle.manifest.schemaVersion = 2; },
+    (bundle) => { bundle.manifest.schemaVersion = 3; },
     (bundle) => { bundle.manifest.counts.events = 2; },
     (bundle) => { bundle.history.events[0].rawRecordIds = ["missing"]; },
   ]) {
@@ -112,4 +113,38 @@ test("package persistence cannot overwrite a directory containing its input", as
     overwrite: true, protectedPaths: [input],
   }), (error) => error.code === "INVALID_ARGUMENT");
   assert.equal(await readFile(input, "utf8"), "keep input");
+});
+
+
+test("schema 2 supports both harnesses while schema 1 remains Codex-only", () => {
+  for (const harness of ["codex", "opencode"]) {
+    const bundle = validBundle();
+    bundle.manifest.schemaVersion = 2;
+    bundle.source.harness = harness;
+    const safe = core.sanitizeBundle(bundle);
+    assert.equal(safe.manifest.schemaVersion, 2);
+    assert.equal(safe.source.harness, harness);
+  }
+  const old = validBundle();
+  assert.equal(core.validateBundle(old).manifest.schemaVersion, 1);
+  old.source.harness = "opencode";
+  assert.throws(() => core.validateBundle(old), error => error.code === "INVALID_BUNDLE");
+  for (const [schema, harness] of [[3, "codex"], [2, "unknown"]]) {
+    const invalid = validBundle();
+    invalid.manifest.schemaVersion = schema;
+    invalid.source.harness = harness;
+    assert.throws(() => core.validateBundle(invalid), error => error.code === "INVALID_BUNDLE");
+  }
+});
+
+test("bundle construction selects schema by source and reports the actual destination", () => {
+  const original = validBundle();
+  for (const harness of ["codex", "opencode"]) {
+    const capture = { source: { ...original.source, harness }, events: original.history.events, rawRecords: original.history.rawRecords, warnings: [], sourceDigest: original.manifest.sourceDigest, completeness: "complete", exclusions: [] };
+    const workspace = { ...original.workspace, git: original.git, warnings: [] };
+    const bundle = createBundle(capture, workspace, original.handoff);
+    assert.equal(bundle.manifest.schemaVersion, harness === "codex" ? 1 : 2);
+    assert.equal(createReport(bundle, { selectedEventIds: [], warnings: [] }, "0.162.1", { preparation: "prepared", destination: "codex" }).destination.harness, "codex");
+    assert.equal(createReport(bundle, { selectedEventIds: [], warnings: [] }, "2.0.22", { preparation: "prepared" }).destination.harness, "opencode");
+  }
 });

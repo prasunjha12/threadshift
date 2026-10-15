@@ -103,3 +103,15 @@ test("context compilation leaves the canonical bundle unchanged", () => {
   smart.compileSmart(bundle, { maxCharacters: 700 });
   assert.equal(JSON.stringify(bundle), before);
 });
+
+
+test("Smart identity names the actual OpenCode source without changing history attribution", () => {
+  const bundle = validBundle();
+  bundle.manifest.schemaVersion = 2;
+  bundle.source.harness = "opencode";
+  bundle.source.runtimeVersion = "2.0.22";
+  const result = smart.compileSmart(bundle, { maxCharacters: 24000 });
+  assert.match(result.text, /opencode session session-1 \(OpenCode 2\.0\.22\)/);
+  assert.doesNotMatch(result.text, /Codex 2\.0\.22/);
+  assert.match(result.text, /attributed historical context/);
+});

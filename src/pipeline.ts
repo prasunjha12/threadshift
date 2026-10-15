@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import type { CaptureResult, ConversionReport, Evidence, HandoffState, ThreadShiftBundle, Warning, WorkspaceSnapshot } from "./core/types.js";
+import type { CaptureResult, ConversionReport, Evidence, HandoffState, Harness, ThreadShiftBundle, Warning, WorkspaceSnapshot } from "./core/types.js";
 import { ThreadShiftError } from "./core/errors.js";
 import { sanitizeBundle } from "./core/privacy.js";
 import { loadPrivacyRules } from "./core/privacy-paths.js";
@@ -22,7 +22,7 @@ export function createBundle(
   }
   const bundle: ThreadShiftBundle = {
     manifest: {
-      schemaVersion: 1,
+      schemaVersion: capture.source.harness === "codex" ? 1 : 2,
       bundleId: randomUUID(),
       capturedAt,
       completeness: capture.completeness,
@@ -89,11 +89,11 @@ export function createReport(
   bundle: ThreadShiftBundle,
   context: { selectedEventIds: string[]; warnings: Warning[] },
   destinationVersion: string,
-  options: { preparation: ConversionReport["preparation"]; warnings?: Warning[] } ,
+  options: { preparation: ConversionReport["preparation"]; warnings?: Warning[]; destination?: Harness } ,
 ): ConversionReport {
   return {
     source: { harness: bundle.source.harness, sessionId: bundle.source.sessionId, runtimeVersion: bundle.source.runtimeVersion },
-    destination: { harness: "opencode", runtimeVersion: destinationVersion },
+    destination: { harness: options.destination ?? "opencode", runtimeVersion: destinationVersion },
     mode: "smart",
     completeness: bundle.manifest.completeness,
     preservedCounts: { events: bundle.history.events.length, rawRecords: bundle.history.rawRecords.length },

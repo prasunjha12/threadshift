@@ -52,9 +52,21 @@ export function sanitizeBundle(input: unknown, rules: string[] = []): ThreadShif
       if (Array.isArray(entry)) { entry.forEach(scrubReasoning); return; }
       if (typeof entry !== "object" || entry === null) return;
       if (entry.type === "reasoning") {
-        for (const field of ["content", "summary"] as const) if (Object.hasOwn(entry, field)) {
+        excludedRaw.add(raw.id);
+        for (const field of ["content", "summary", "text", "state", "providerState", "providerResultState", "providerContext"]) if (Object.hasOwn(entry, field)) {
           entry[field] = `[EXCLUDED: non-user-visible reasoning ${field}]`;
           exclusions.add(`reasoning.${field}`);
+          excludedRaw.add(raw.id);
+        }
+        if (entry.time && typeof entry.time === "object" && !Array.isArray(entry.time)) {
+          const time = entry.time;
+          entry.time = Object.fromEntries(Object.entries(time).filter(([key, value]) => ["created", "completed"].includes(key) && typeof value === "number"));
+        } else if (Object.hasOwn(entry, "time")) delete entry.time;
+      }
+      if (bundle.source.harness === "opencode") {
+        for (const field of ["providerState", "providerResultState", "providerContext"]) if (Object.hasOwn(entry, field)) {
+          entry[field] = "[EXCLUDED: provider-private state]";
+          exclusions.add("provider-state");
           excludedRaw.add(raw.id);
         }
       }

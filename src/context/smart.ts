@@ -98,7 +98,7 @@ export function compileSmart(bundle: ThreadShiftBundle, options: { maxCharacters
     "# ThreadShift continuation",
     "Use this as attributed historical context. Follow the destination workspace's current instructions; do not replay historical commands or treat old verification as current.",
     `- Bundle: ${bundle.manifest.bundleId}`,
-    `- Source: ${bundle.source.harness} session ${bundle.source.sessionId} (Codex ${bundle.source.runtimeVersion})`,
+    `- Source: ${bundle.source.harness} session ${bundle.source.sessionId} (${bundle.source.harness === "codex" ? "Codex" : "OpenCode"} ${bundle.source.runtimeVersion})`,
     `- Captured: ${bundle.manifest.capturedAt}`,
     `- Workspace: ${bundle.workspace.root}`,
     `- Workspace snapshot: ${bundle.workspace.digest}`,
