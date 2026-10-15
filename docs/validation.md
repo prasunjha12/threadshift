@@ -88,3 +88,21 @@ The native collector accepts both directions, preserves its existing forward def
 
 The independent whole-branch review found four reverse-flow gaps: text-part provider state, malformed terminal evidence, result-only tool calls, and inline-media import handling. Focused reproductions failed before the corrections. The canonical sanitizer now excludes recognized text provider state and imported inline bytes with linked-copy protection, while retaining safe visible text. Terminal checks fail closed on unverified completion evidence, and result-only tools stay unknown instead of inventing call arguments. The native exercises above preceded these final fixture-verified corrections; no further model inference was run afterward.
 Final post-review checks: build/typecheck passed; npm test passed 126 cases with the existing Windows sandbox alias skip; the clean offline package consumer passed; tracked product files and committed history were pattern-scanned with no leaks found. No new native model inference or macOS/Linux validation is implied by these fixture results.
+
+## Pi integration verification — 2026-10-15
+
+Pi 1.0.2 (`@earendil-works/pi-coding-agent`), format 3, was checked on Windows with Node 24.12.0. Product revision `863e6d72aea0954c621b02f1ced7b60d0e753d7d` was used for the native checks below. Detailed native histories, identities and audit artifacts remain outside this public checkout.
+
+| Check | Observed result | Limit |
+| --- | --- | --- |
+| Native Pi source, dry run and preparation to Codex/OpenCode | Both passed; 2 selected tree entries plus 1 header retained; source bytes unchanged | Source authored through the supported native SDK as a dummy fixture, not by a model |
+| Saved native Codex and OpenCode bundles imported into native Pi | Both created fresh persisted sessions, completed assistant/turn/settlement and exited zero | Local dummy provider, archived source capture from the earlier native exercise; no new native source capture or reasoning claim |
+| Four new CLI routes and both round trips | Subprocess fixtures pass; preserve first requirement/citation and distinct Pi intermediate state; exclude sibling/private/edited-away markers from default input | Fixtures do not prove model understanding |
+| Real configured Pi inference | Unavailable: no usable provider login for the selected model | No credentials read or model/approval bypass added |
+| Complete model editing journeys and both substantive native round trips | Blocked/unverified | Pi provider prerequisite unavailable; earlier final Codex edits were also blocked by read-only/CreateDesktopW restrictions |
+
+The disposable parser baseline deliberately fails on null input. No claim is made that native Pi solved it. Source-version checks and preparation do not start inference. OpenCode's normal log initially required narrow filesystem access; after granting it, native preparation succeeded. No native conversation or database was rewritten, and parent-session files were not opened.
+
+Pi inherited-session coverage remains incomplete unless independently accounted for; automatic launch rejects incomplete Pi-related flows. Effective context is rebuilt from sanitized raw ancestry. Source-derived cached list fields are not trusted as independent evidence; explicit unlinked user-supplied fields remain. The existing conservative confidentiality boundary can exclude an entire mixed record containing confidential-file references, including a nested continuation; review the saved context before launch.
+
+The feature remains local. Cross-platform CI and real provider editing acceptance are pending; earlier main-branch CI does not certify this feature. Offline package installation and tracked/history pattern scanning are separate checks, not guarantees about arbitrary confidential prose.

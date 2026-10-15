@@ -10,3 +10,4 @@ coverage/
 *.log
 outputs/
 .threadshift/
+.superpowers/
