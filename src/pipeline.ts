@@ -5,6 +5,7 @@ import { ThreadShiftError } from "./core/errors.js";
 import { sanitizeBundle } from "./core/privacy.js";
 import { loadPrivacyRules } from "./core/privacy-paths.js";
 import { captureCodex } from "./adapters/codex/capture.js";
+import { captureOpenCode } from "./adapters/opencode/capture.js";
 import { deriveHandoff, sanitizeHandoffFields } from "./context/handoff.js";
 import { inspectWorkspace } from "./workspace/inspect.js";
 
@@ -52,10 +53,12 @@ export function createBundle(
 }
 
 export async function captureBundle(options: {
+  from?: Harness;
   sessionId: string;
   workspaceRoot: string;
   codexBin?: string;
   codexHome?: string;
+  opencodeBin?: string;
   handoffFields?: unknown;
 }, signal?: AbortSignal): Promise<{ bundle: ThreadShiftBundle; workspace: WorkspaceSnapshot }> {
   const captureOptions = {
@@ -64,7 +67,9 @@ export async function captureBundle(options: {
     ...(options.codexHome ? { codexHome: options.codexHome } : {}),
     cwd: options.workspaceRoot,
   };
-  const capture = await captureCodex(captureOptions, signal);
+  const capture = options.from === "opencode"
+    ? await captureOpenCode({ sessionId: options.sessionId, cwd: options.workspaceRoot, ...(options.opencodeBin ? { executable: options.opencodeBin } : {}) }, signal)
+    : await captureCodex(captureOptions, signal);
   const workspace = await inspectWorkspace(options.workspaceRoot);
   const sanitized = sanitizeHandoffFields(options.handoffFields);
   const handoff = deriveHandoff(capture, workspace, sanitized.fields);

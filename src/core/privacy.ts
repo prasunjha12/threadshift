@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { JsonValue, ThreadShiftBundle } from "./types.js";
+import type { CaptureResult, JsonValue, ThreadShiftBundle } from "./types.js";
 import { validateBundle } from "./validate.js";
 import { redactRecord } from "./redact.js";
 import { isPrivatePath, referencesPrivatePath } from "./privacy-paths.js";
@@ -17,6 +17,19 @@ function references(value: unknown, rules: string[]): boolean {
   if (Array.isArray(value)) return value.some((entry) => references(entry, rules));
   return value !== null && typeof value === "object" && Object.entries(value).some(([key, entry]) =>
     (/^(?:path|file|filename|filepath|uri)$/i.test(key) && typeof entry === "string" && isPrivatePath(entry, rules)) || references(entry, rules));
+}
+
+/** Apply the canonical privacy boundary before a source adapter returns readable history. */
+export function sanitizeCapture(capture: CaptureResult): CaptureResult {
+  const safe = sanitizeBundle({
+    manifest: { schemaVersion: capture.source.harness === "codex" ? 1 : 2, bundleId: "capture", capturedAt: new Date(0).toISOString(), completeness: capture.completeness, counts: { events: capture.events.length, rawRecords: capture.rawRecords.length }, sourceDigest: capture.sourceDigest, workspaceDigest: "uninspected", exclusions: capture.exclusions },
+    source: capture.source, history: { events: capture.events, rawRecords: capture.rawRecords },
+    workspace: { root: capture.source.workingDirectory, inspectedAt: new Date(0).toISOString(), digest: "uninspected", changedFiles: [], instructionReferences: [], artifactReferences: [] },
+    git: { present: false, head: null, branch: null, status: [], patches: [], warnings: [] },
+    handoff: { objective: null, latestRequest: null, currentState: null, completed: [], decisions: [], remaining: [], blockers: [], nextActions: [], importantFiles: [], verificationState: [], activePlan: [] },
+    configuration: { references: [], compatibility: "not-translated" }, artifacts: { references: [] }, provenance: [], warnings: capture.warnings,
+  });
+  return { ...capture, source: safe.source, events: safe.history.events, rawRecords: safe.history.rawRecords, warnings: safe.warnings, sourceDigest: safe.manifest.sourceDigest, exclusions: safe.manifest.exclusions };
 }
 
 /** Schema projection and confidentiality processing are repeated at outbound boundaries. */
