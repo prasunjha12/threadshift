@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 if (args.includes("--help") || args.length === 0) {
-  console.log("node scripts/native-acceptance.mjs --session ID --workspace DIR --output NEW_DIR [--from codex|opencode --to opencode|codex] [--codex-home DIR] [--launch --provider-kind real|native-local-fixture]");
+  console.log("node scripts/native-acceptance.mjs --session ID --workspace DIR --output NEW_DIR [--from codex|opencode|pi --to codex|opencode|pi] [--codex-home DIR] [--pi-bin FILE --pi-home DIR --pi-leaf ID] [--launch --provider-kind real|native-local-fixture]");
   process.exit(0);
 }
 const launch = args.includes("--launch");
@@ -34,6 +34,7 @@ const evidence = {
   nodeVersion: process.version, source: report.source, destination: report.destination,
   bundleId: bundle.manifest.bundleId, sourceDigest: bundle.manifest.sourceDigest,
   workspaceDigest: bundle.manifest.workspaceDigest,
+  nativeSourceCounts: bundle.source.selection ? { totalEntries: bundle.source.selection.totalEntries, selectedEntries: bundle.source.selection.selectedEntries, excludedEntries: bundle.source.selection.excludedEntries } : null,
   preservedCounts: report.preservedCounts, selectedCounts: report.selectedCounts,
   exclusions: bundle.manifest.exclusions, providerKind,
   launch: report.launch ?? { status: "not-run" },
