@@ -1,0 +1,213 @@
+{
+  "scope": "Success shape observed through native Pi 1.0.2 with local dummy provider; failures synthetic",
+  "success": [
+    {
+      "type": "session",
+      "version": 3,
+      "id": "synthetic-pi",
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "cwd": "/synthetic/project"
+    },
+    {
+      "type": "agent_start"
+    },
+    {
+      "type": "turn_start"
+    },
+    {
+      "type": "message_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic complete response"
+          }
+        ],
+        "stopReason": "stop"
+      }
+    },
+    {
+      "type": "turn_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic complete response"
+          }
+        ],
+        "stopReason": "stop"
+      },
+      "toolResults": []
+    },
+    {
+      "type": "agent_end",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Synthetic complete response"
+            }
+          ],
+          "stopReason": "stop"
+        }
+      ]
+    },
+    {
+      "type": "agent_settled"
+    }
+  ],
+  "failures": {
+    "aborted": [
+      {
+        "type": "session",
+        "version": 3,
+        "id": "synthetic-pi",
+        "timestamp": "2026-10-15T00:00:00.000Z",
+        "cwd": "/synthetic/project"
+      },
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Synthetic complete response"
+            }
+          ],
+          "stopReason": "aborted"
+        }
+      }
+    ],
+    "missingSettled": [
+      {
+        "type": "session",
+        "version": 3,
+        "id": "synthetic-pi",
+        "timestamp": "2026-10-15T00:00:00.000Z",
+        "cwd": "/synthetic/project"
+      },
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Synthetic complete response"
+            }
+          ],
+          "stopReason": "stop"
+        }
+      },
+      {
+        "type": "turn_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Synthetic complete response"
+            }
+          ],
+          "stopReason": "stop"
+        },
+        "toolResults": []
+      },
+      {
+        "type": "agent_end",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Synthetic complete response"
+              }
+            ],
+            "stopReason": "stop"
+          }
+        ]
+      }
+    ],
+    "lateTurn": [
+      {
+        "type": "session",
+        "version": 3,
+        "id": "synthetic-pi",
+        "timestamp": "2026-10-15T00:00:00.000Z",
+        "cwd": "/synthetic/project"
+      },
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Synthetic complete response"
+            }
+          ],
+          "stopReason": "stop"
+        }
+      },
+      {
+        "type": "turn_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Synthetic complete response"
+            }
+          ],
+          "stopReason": "stop"
+        },
+        "toolResults": []
+      },
+      {
+        "type": "agent_end",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Synthetic complete response"
+              }
+            ],
+            "stopReason": "stop"
+          }
+        ]
+      },
+      {
+        "type": "agent_settled"
+      },
+      {
+        "type": "turn_start"
+      }
+    ]
+  }
+}

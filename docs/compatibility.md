@@ -43,3 +43,11 @@ These are historical first-slice probe results, not a published support matrix. 
 - TypeScript `7.0.2` and `@types/node` `24.19.2` are recorded in `package-lock.json`. `npm run build`, `npm run typecheck`, and the five runtime subprocess tests passed on Windows.
 - Runtime wrapper probe resolves the installed Codex PowerShell shim to its Node executable and entry script. Runtime subprocess tests cover literal Unicode/shell-like arguments, deadline cancellation, abort cancellation, missing binaries, and a Windows npm shim fixture. Codex fixture tests cover selection, multi-page stability, active/changing/malformed sessions, unsupported versions, unknown records, and input limits.
 - Linux and macOS runners have not run yet.
+
+## Pi 1.0.2 (format 3), 2026-10-15
+
+Pinned installed `@earendil-works/pi-coding-agent` 1.0.2 on Windows/Node 24.12.0. Isolated `--version` returned 1.0.2 without loading a sentinel extension. Native SessionManager fixture setup confirmed format-3 JSONL headers, workspace paths, custom IDs, parent-linked entries, content edits wrapped as `{content: ...}`, and retain-none compaction anchoring to its own entry ID. Navigating a branch without appending did not persist the active cursor: branched source selection must be explicit. Parent-session paths are metadata and are never followed.
+
+A native `--mode json` invocation with piped stdin, a fresh isolated home and a local OpenAI-compatible dummy provider persisted a fresh session, emitted `session`, `turn_start`, assistant `message_end` with `stopReason: stop`, `turn_end`, `agent_end`, then `agent_settled`, and exited zero. This checks native protocol behavior without claiming real model reasoning. The normal provider configuration had no usable login. Failure/recovery examples in fixtures are synthetic. Exit zero or `agent_end` alone does not establish successful settlement; aborted/error/unfinished tool activity must block success. Split JSON framing on LF only.
+
+Version probes and source file reads do not request conversation mutation. Native destination sessions can perform runtime housekeeping and persist the explicitly requested new conversation. Public examples use synthetic identities; native scratch evidence stays outside this checkout. [Pi source](https://github.com/earendil-works/pi) and the installed matching SDK/types define this version scope.

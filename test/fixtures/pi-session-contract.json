@@ -1,0 +1,176 @@
+{
+  "scope": "Synthetic shapes pinned against Pi 1.0.2 format 3; not native identities",
+  "header": {
+    "type": "session",
+    "version": 3,
+    "id": "synthetic-pi",
+    "timestamp": "2026-10-15T00:00:00.000Z",
+    "cwd": "/synthetic/project"
+  },
+  "entries": [
+    {
+      "type": "message",
+      "id": "a1",
+      "parentId": null,
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "message": {
+        "role": "user",
+        "content": "Objective: fix parser"
+      }
+    },
+    {
+      "type": "message",
+      "id": "a2",
+      "parentId": "a1",
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Decision: preserve parse(value)."
+          }
+        ],
+        "stopReason": "stop"
+      }
+    },
+    {
+      "type": "message",
+      "id": "a3",
+      "parentId": "a2",
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "message": {
+        "role": "user",
+        "content": "Current request: handle null."
+      }
+    },
+    {
+      "type": "message",
+      "id": "a4",
+      "parentId": "a3",
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Current state: null regression remains."
+          }
+        ],
+        "stopReason": "stop"
+      }
+    },
+    {
+      "type": "message",
+      "id": "b1",
+      "parentId": "a1",
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "message": {
+        "role": "user",
+        "content": "SIBLING_EXCLUDED_MARKER"
+      }
+    },
+    {
+      "type": "message",
+      "id": "b2",
+      "parentId": "b1",
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "SIBLING_EXCLUDED_MARKER"
+          }
+        ],
+        "stopReason": "stop"
+      }
+    },
+    {
+      "type": "message",
+      "id": "b3",
+      "parentId": "b2",
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "message": {
+        "role": "user",
+        "content": "SIBLING_EXCLUDED_MARKER"
+      }
+    },
+    {
+      "type": "message",
+      "id": "b4",
+      "parentId": "b3",
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "SIBLING_EXCLUDED_MARKER"
+          }
+        ],
+        "stopReason": "stop"
+      }
+    },
+    {
+      "type": "message",
+      "id": "b5",
+      "parentId": "b4",
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "message": {
+        "role": "user",
+        "content": "SIBLING_EXCLUDED_MARKER"
+      }
+    },
+    {
+      "type": "message",
+      "id": "b6",
+      "parentId": "b5",
+      "timestamp": "2026-10-15T00:00:00.000Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "SIBLING_EXCLUDED_MARKER"
+          }
+        ],
+        "stopReason": "stop"
+      }
+    }
+  ],
+  "selection": {
+    "kind": "pi-branch",
+    "leafId": "a4",
+    "totalEntries": 10,
+    "selectedEntries": 4,
+    "excludedEntries": 6
+  },
+  "contextExamples": [
+    {
+      "type": "context_edit",
+      "id": "e1",
+      "parentId": "a4",
+      "targetId": "a3",
+      "replacement": {
+        "content": "Current request: handle null and test."
+      }
+    },
+    {
+      "type": "compaction",
+      "id": "c1",
+      "parentId": "e1",
+      "summary": "Parser task checkpoint",
+      "firstKeptEntryId": "a3",
+      "tokensBefore": 100
+    },
+    {
+      "type": "compaction",
+      "id": "c2",
+      "parentId": "c1",
+      "summary": "Retain none",
+      "firstKeptEntryId": "c2",
+      "tokensBefore": 100
+    }
+  ]
+}
